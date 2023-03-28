@@ -22,9 +22,13 @@
 #define CMD_DIGITAL_READ 0x1
 #define CMD_DIGITAL_READ_PULLUP 0x2
 #define CMD_DIGITAL_WRITE 0x3
-
 #define CMD_ANALOG_READ 0x4
 #define CMD_ANALOG_WRITE 0x5
+
+#define ERR_MALFORMED_PACKAGE 0x1
+#define ERR_INVALID_CHECKSUM 0x2
+#define ERR_INVALID_PIN 0x3
+#define ERR_INVALID_COMMAND 0x4
 
 void sendResponse(uint8_t cmd, uint8_t result, bool success)
 {
@@ -46,7 +50,7 @@ void executeCommand(uint8_t cmd, uint8_t pin, uint8_t val)
     // validate pin number
     if (!IS_VALID_PIN(pin))
     {
-        sendResponse(cmd, 0, false);
+        sendResponse(cmd, ERR_INVALID_PIN, false);
         return;
     }
 
@@ -74,7 +78,7 @@ void executeCommand(uint8_t cmd, uint8_t pin, uint8_t val)
         break;
     default:
         // invalid command, ignore it
-        sendResponse(cmd, 0, false);
+        sendResponse(cmd, ERR_INVALID_COMMAND, false);
         break;
     }
 }
@@ -83,13 +87,14 @@ void acceptPackage()
 {
     // check for start of packet
     uint8_t start = Serial.read();
-    if(start != PKG_START_BYTE)
+    if (start != PKG_START_BYTE)
     {
-      return;
+        return;
     }
 
     // wait for the remaining data
-    while(Serial.available() < 5);
+    while (Serial.available() < 5)
+        ;
 
     // read the packet data
     uint8_t cmd = Serial.read();
@@ -102,7 +107,7 @@ void acceptPackage()
     if (end != PKG_END_BYTE)
     {
         // invalid package, ignore it
-        sendResponse(cmd, 0, false);
+        sendResponse(cmd, ERR_MALFORMED_PACKAGE, false);
         return;
     }
 
@@ -111,7 +116,7 @@ void acceptPackage()
     if (chksum != expectedChksum)
     {
         // invalid checksum, ignore it
-        sendResponse(cmd, 0, false);
+        sendResponse(cmd, ERR_INVALID_CHECKSUM, false);
         return;
     }
 
@@ -127,8 +132,8 @@ void setup()
 
 void loop()
 {
-    if(Serial.available() > 0)
+    if (Serial.available() > 0)
     {
-      acceptPackage();
+        acceptPackage();
     }
 }

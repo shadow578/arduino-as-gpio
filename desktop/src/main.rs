@@ -67,7 +67,7 @@ fn main() {
 
     // open port
     let baud = args.baud.unwrap_or(115200);
-    let mut port = serialport::new(args.port, baud)
+    let mut port = serialport::new(args.port.clone(), baud)
         .timeout(Duration::from_millis(100))
         .open()
         .unwrap_or_else(|e| {
@@ -135,7 +135,26 @@ fn main() {
     }
 
     // check for error and exit if there is one
-    if response.error {
+    if response.error != gpio::ErrorKind::None {
+        match response.error {
+            gpio::ErrorKind::CommunicationError {code} => {
+                eprintln!(
+                    "Communication failure with GPIO controller on port {} (code={:#02x})",
+                    args.port,
+                    code
+                );
+            }
+            gpio::ErrorKind::InvalidPin => {
+                eprintln!("Invalid pin number");
+            }
+            gpio::ErrorKind::ResponseMismatch => {
+                eprintln!("GPIO Controller response differs from expected response. This could indicate a failing controller, spotty communication, or something else.");
+            }
+            _ => {
+                panic!("you win. Open a issue to claim your cookie.")
+            }
+        }
+
         std::process::exit(128);
     }
 

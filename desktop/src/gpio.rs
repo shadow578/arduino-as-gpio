@@ -11,9 +11,13 @@ const PKG_RESPONSE_ERROR_MASK: u8 = 0x80;
 const CMD_DIGITAL_READ: u8 = 0x1;
 const CMD_DIGITAL_READ_PULLUP: u8 = 0x2;
 const CMD_DIGITAL_WRITE: u8 = 0x3;
-
 const CMD_ANALOG_READ: u8 = 0x4;
 const CMD_ANALOG_WRITE: u8 = 0x5;
+
+const ERR_MALFORMED_PACKAGE: u8 = 0x1;
+const ERR_INVALID_CHECKSUM: u8 = 0x2;
+const ERR_INVALID_PIN: u8 = 0x3;
+const ERR_INVALID_COMMAND: u8 = 0x4;
 
 //
 // Data Types
@@ -22,6 +26,15 @@ const CMD_ANALOG_WRITE: u8 = 0x5;
 pub enum CommandKind {
     Read,
     Write,
+}
+
+#[derive(PartialEq)]
+pub enum ErrorKind {
+    None,
+    /* one of [ERR_MALFORMED_PACKAGE; ERR_INVALID_CHECKSUM; ERR_INVALID_COMMAND], or invalid data was received */
+    CommunicationError { code: u8 },
+    InvalidPin,
+    ResponseMismatch,
 }
 
 pub struct Command {
@@ -35,7 +48,7 @@ pub struct Command {
 pub struct Response {
     pub command: Command,
     pub value: u8,
-    pub error: bool,
+    pub error: ErrorKind,
 }
 
 //
@@ -49,11 +62,13 @@ pub fn write(port: &mut dyn serialport::SerialPort, command: Command) -> Respons
     let mut response = read_package(port);
 
     // validate the response matches the written command
-    if response.command.kind != command.kind
-        || response.command.pullup != command.pullup
-        || response.command.analog != command.analog
+    // not needed if the response is alreay an error
+    if response.error == ErrorKind::None
+        && (response.command.kind != command.kind
+            || response.command.pullup != command.pullup
+            || response.command.analog != command.analog)
     {
-        response.error = true;
+        response.error = ErrorKind::ResponseMismatch;
     }
 
     return response;
@@ -92,14 +107,7 @@ fn write_package(port: &mut dyn serialport::SerialPort, command: &Command) {
 fn read_package(port: &mut dyn serialport::SerialPort) -> Response {
     // read raw response package
     let mut pkg: [u8; 5] = [0; 5];
-    read_package_raw(port, &mut pkg);
-
-    // unpack package
-    let [_, cmd, result, _, _] = pkg;
-
-    // check if error bit is set
-    if (cmd & PKG_RESPONSE_ERROR_MASK) != 0 {
-        eprintln!("GPIO response indicates error");
+    if !read_package_raw(port, &mut pkg) {
         return Response {
             command: Command {
                 kind: CommandKind::Read,
@@ -109,7 +117,34 @@ fn read_package(port: &mut dyn serialport::SerialPort) -> Response {
                 pin: 0,
             },
             value: 0,
-            error: true,
+            error: ErrorKind::CommunicationError{code: 0xfe},
+        };
+    }
+
+    // unpack package
+    let [_, cmd, result, _, _] = pkg;
+
+    // check if error bit is set
+    if (cmd & PKG_RESPONSE_ERROR_MASK) != 0 {
+        // map result to error kind
+        let error = match result {
+            ERR_MALFORMED_PACKAGE => ErrorKind::CommunicationError{code: result},
+            ERR_INVALID_CHECKSUM => ErrorKind::CommunicationError{code: result},
+            ERR_INVALID_PIN => ErrorKind::InvalidPin,
+            ERR_INVALID_COMMAND => ErrorKind::CommunicationError{code: result},
+            _ => ErrorKind::CommunicationError{code: result},
+        };
+
+        return Response {
+            command: Command {
+                kind: CommandKind::Read,
+                value: 0,
+                analog: false,
+                pullup: false,
+                pin: 0,
+            },
+            value: 0,
+            error: error,
         };
     }
 
@@ -145,7 +180,7 @@ fn read_package(port: &mut dyn serialport::SerialPort) -> Response {
         }
         _ => {
             // invalid command
-            eprintln!("GPIO response contains invalid command");
+            //eprintln!("GPIO response contains invalid command");
             return Response {
                 command: Command {
                     kind: CommandKind::Read,
@@ -155,7 +190,7 @@ fn read_package(port: &mut dyn serialport::SerialPort) -> Response {
                     pin: 0,
                 },
                 value: 0,
-                error: true,
+                error: ErrorKind::CommunicationError{code: 0xfd},
             };
         }
     }
@@ -170,7 +205,7 @@ fn read_package(port: &mut dyn serialport::SerialPort) -> Response {
             pin: 0,
         },
         value: result,
-        error: false,
+        error: ErrorKind::None,
     };
 }
 
@@ -199,6 +234,7 @@ fn read_package_raw(port: &mut dyn serialport::SerialPort, data: &mut [u8; 5]) -
 
     // validate start and end bytes
     if start != PKG_START_BYTE || end != PKG_END_BYTE {
+        //eprintln!("malformed package received");
         return false;
     }
 
@@ -211,5 +247,5 @@ fn read_package_raw(port: &mut dyn serialport::SerialPort, data: &mut [u8; 5]) -
     .0;
 
     // validate checksum
-    return checksum != expected_checksum;
+    return checksum == expected_checksum;
 }
