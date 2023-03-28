@@ -24,6 +24,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "agpio"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serialport",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "0.7.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -91,14 +99,6 @@ name = "clap_lex"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f0807fb6f644c83f3e4ec014fec9858c1c8b26a7db8eb5f0bde5817df9c1df7"
-
-[[package]]
-name = "desktop"
-version = "0.1.0"
-dependencies = [
- "clap",
- "serialport",
-]
 
 [[package]]
 name = "errno"

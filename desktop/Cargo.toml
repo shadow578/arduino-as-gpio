@@ -1,6 +1,7 @@
 [package]
-name = "desktop"
+name = "agpio"
 version = "0.1.0"
+author = ["shadow578"]
 edition = "2021"
 
 [dependencies]
