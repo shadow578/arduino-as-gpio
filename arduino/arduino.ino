@@ -11,6 +11,9 @@
 //
 #define IS_VALID_PIN(x) ((x) >= MIN_PIN_NUMBER && (x) <= MAX_PIN_NUMBER)
 
+//
+// Protocol Constants
+//
 #define PKG_START_BYTE '{'
 #define PKG_END_BYTE '}'
 #define PKG_CHKSUM_PLACEHOLDER_VALUE 0x00
@@ -25,7 +28,7 @@
 
 void sendResponse(uint8_t cmd, uint8_t result, bool success)
 {
-    // set success bit
+    // set error bit
     cmd = (cmd & ~PKG_RESPONSE_ERROR_MASK) | (success ? 0 : PKG_RESPONSE_ERROR_MASK);
 
     // send package
@@ -35,6 +38,7 @@ void sendResponse(uint8_t cmd, uint8_t result, bool success)
     Serial.write(result);
     Serial.write(chksum);
     Serial.write(PKG_END_BYTE);
+    Serial.flush();
 }
 
 void executeCommand(uint8_t cmd, uint8_t pin, uint8_t val)
@@ -77,9 +81,15 @@ void executeCommand(uint8_t cmd, uint8_t pin, uint8_t val)
 
 void acceptPackage()
 {
-    // wait for start of packet
-    while (Serial.available() > 0 && Serial.read() != PKG_START_BYTE)
-        ;
+    // check for start of packet
+    uint8_t start = Serial.read();
+    if(start != PKG_START_BYTE)
+    {
+      return;
+    }
+
+    // wait for the remaining data
+    while(Serial.available() < 5);
 
     // read the packet data
     uint8_t cmd = Serial.read();
@@ -117,5 +127,8 @@ void setup()
 
 void loop()
 {
-    acceptPackage();
+    if(Serial.available() > 0)
+    {
+      acceptPackage();
+    }
 }
