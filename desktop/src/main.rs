@@ -137,11 +137,10 @@ fn main() {
     // check for error and exit if there is one
     if response.error != gpio::ErrorKind::None {
         match response.error {
-            gpio::ErrorKind::CommunicationError {code} => {
+            gpio::ErrorKind::CommunicationError { code } => {
                 eprintln!(
                     "Communication failure with GPIO controller on port {} (code={:#02x})",
-                    args.port,
-                    code
+                    args.port, code
                 );
             }
             gpio::ErrorKind::InvalidPin => {

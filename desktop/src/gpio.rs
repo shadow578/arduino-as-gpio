@@ -117,7 +117,7 @@ fn read_package(port: &mut dyn serialport::SerialPort) -> Response {
                 pin: 0,
             },
             value: 0,
-            error: ErrorKind::CommunicationError{code: 0xfe},
+            error: ErrorKind::CommunicationError { code: 0xfe },
         };
     }
 
@@ -128,11 +128,11 @@ fn read_package(port: &mut dyn serialport::SerialPort) -> Response {
     if (cmd & PKG_RESPONSE_ERROR_MASK) != 0 {
         // map result to error kind
         let error = match result {
-            ERR_MALFORMED_PACKAGE => ErrorKind::CommunicationError{code: result},
-            ERR_INVALID_CHECKSUM => ErrorKind::CommunicationError{code: result},
+            ERR_MALFORMED_PACKAGE => ErrorKind::CommunicationError { code: result },
+            ERR_INVALID_CHECKSUM => ErrorKind::CommunicationError { code: result },
             ERR_INVALID_PIN => ErrorKind::InvalidPin,
-            ERR_INVALID_COMMAND => ErrorKind::CommunicationError{code: result},
-            _ => ErrorKind::CommunicationError{code: result},
+            ERR_INVALID_COMMAND => ErrorKind::CommunicationError { code: result },
+            _ => ErrorKind::CommunicationError { code: result },
         };
 
         return Response {
@@ -190,7 +190,7 @@ fn read_package(port: &mut dyn serialport::SerialPort) -> Response {
                     pin: 0,
                 },
                 value: 0,
-                error: ErrorKind::CommunicationError{code: 0xfd},
+                error: ErrorKind::CommunicationError { code: 0xfd },
             };
         }
     }
