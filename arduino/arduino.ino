@@ -25,7 +25,7 @@
 #define CMD_ANALOG_READ 0x4
 #define CMD_ANALOG_WRITE 0x5
 
-#define ERR_MALFORMED_PACKAGE 0x1
+#define ERR_MALFORMED_PACKET 0x1
 #define ERR_INVALID_CHECKSUM 0x2
 #define ERR_INVALID_PIN 0x3
 #define ERR_INVALID_COMMAND 0x4
@@ -107,7 +107,7 @@ void acceptPackage()
     if (end != PKG_END_BYTE)
     {
         // invalid package, ignore it
-        sendResponse(cmd, ERR_MALFORMED_PACKAGE, false);
+        sendResponse(cmd, ERR_MALFORMED_PACKET, false);
         return;
     }
 
