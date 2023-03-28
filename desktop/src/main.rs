@@ -57,8 +57,12 @@ struct Args {
     baud: Option<u32>,
 
     /// by default, the exit code is 0 if HIGH, 1 if LOW. use this flag to disable this behavior.
-    #[arg(short, long)]
+    #[arg(long)]
     no_exit_code: bool,
+
+    /// attempts to wake up the arduino by sending a dummy packet. adds a 500ms delay.
+    #[arg(long)]
+    no_wakeup: bool,
 }
 
 fn main() {
@@ -74,6 +78,13 @@ fn main() {
             eprintln!("Failed to open serial port: {}", e);
             std::process::exit(128);
         });
+
+    if !args.no_wakeup {
+        // arduino sometimes misses bytes when it just reset, so send dummy packet
+        // arduino is a bit sleepy -_-
+        gpio::dummy_write(port.as_mut());
+        std::thread::sleep(Duration::from_millis(500));
+    }
 
     // handle command
     let mut response;

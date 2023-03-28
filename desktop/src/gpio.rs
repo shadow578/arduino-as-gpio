@@ -74,6 +74,12 @@ pub fn write(port: &mut dyn serialport::SerialPort, command: Command) -> Respons
     return response;
 }
 
+pub fn dummy_write(port: &mut dyn serialport::SerialPort)
+{
+    let pkg: [u8; 6] = [PKG_END_BYTE; 6];
+    port.write(&pkg).expect("Failed to write to port");
+}
+
 //
 // Internal API
 //
