@@ -1,6 +1,15 @@
 # Arduino-as-GPIO
 
-use your Arduino as GPIO for any Computer.
+use your Arduino as GPIO for any Computer you can attach a Arduino to.
+Faster than most other solutions i've found, with just 16 ms delay between running the command and the GPIO pin changing.
+
+## Why?
+
+I wanted to control lights on my 3D-Printer using Octoprint, but have octoprint running on a old Laptop that doesn't have any GPIO pins. So I decided to use my Arduino as GPIO for the Laptop.
+
+## How?
+
+The Arduino is connected to the Laptop via USB. The Arduino is running a program that listens for commands and executes them. The commands are sent from the Laptop to the Arduino via Serial.
 
 ## Usage
 
