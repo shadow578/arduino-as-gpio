@@ -57,12 +57,12 @@ struct Args {
     baud: Option<u32>,
 
     /// by default, the exit code is 0 if HIGH, 1 if LOW. use this flag to disable this behavior.
-    #[arg(long)]
+    #[arg(short, long)]
     no_exit_code: bool,
 
-    /// attempts to wake up the arduino by sending a dummy packet. adds a 500ms delay.
-    #[arg(long)]
-    no_wakeup: bool,
+    /// how many times to retry sending a command
+    #[arg(short, long)]
+    retries: Option<i32>,
 }
 
 fn main() {
@@ -79,12 +79,8 @@ fn main() {
             std::process::exit(128);
         });
 
-    if !args.no_wakeup {
-        // arduino sometimes misses bytes when it just reset, so send dummy packet
-        // arduino is a bit sleepy -_-
-        gpio::dummy_write(port.as_mut());
-        std::thread::sleep(Duration::from_millis(500));
-    }
+    // get send retries
+    let send_retries = args.retries.unwrap_or(3);
 
     // handle command
     let mut response;
@@ -105,6 +101,7 @@ fn main() {
                     analog,
                     pullup,
                 },
+                send_retries,
             );
 
             // invert result
@@ -141,6 +138,7 @@ fn main() {
                     analog,
                     pullup: false,
                 },
+                send_retries,
             );
         }
     }

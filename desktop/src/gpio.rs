@@ -22,7 +22,7 @@ const ERR_INVALID_COMMAND: u8 = 0x4;
 //
 // Data Types
 //
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum CommandKind {
     Read,
     Write,
@@ -37,6 +37,7 @@ pub enum ErrorKind {
     ResponseMismatch,
 }
 
+#[derive(Debug)]
 pub struct Command {
     pub kind: CommandKind,
     pub value: u8,
@@ -54,30 +55,53 @@ pub struct Response {
 //
 // Public API
 //
-pub fn write(port: &mut dyn serialport::SerialPort, command: Command) -> Response {
-    // write the package
-    write_package(port, &command);
+pub fn write(
+    port: &mut dyn serialport::SerialPort,
+    command: Command,
+    max_retries: i32,
+) -> Response {
+    // do send/receive with retries
+    let mut tries = 0;
+    let mut response: Response;
+    loop {
+        //println!("Sending command: {:?}; Retry {}", command, tries);
 
-    // read the response
-    let mut response = read_package(port);
+        // write the package
+        write_package(port, &command);
 
-    // validate the response matches the written command
-    // not needed if the response is alreay an error
-    if response.error == ErrorKind::None
-        && (response.command.kind != command.kind
-            || response.command.pullup != command.pullup
-            || response.command.analog != command.analog)
-    {
-        response.error = ErrorKind::ResponseMismatch;
+        // read the response
+        response = read_package(port);
+
+        // validate the response matches the written command
+        // not needed if the response is alreay an error
+        if response.error == ErrorKind::None
+            && (response.command.kind != command.kind
+                || response.command.pullup != command.pullup
+                || response.command.analog != command.analog)
+        {
+            response.error = ErrorKind::ResponseMismatch;
+        }
+
+        // only retry on certain errors
+        match response.error {
+            ErrorKind::CommunicationError { code: _ } => {}
+            ErrorKind::ResponseMismatch => {}
+            _ => {
+                break;
+            }
+        }
+
+        // update retries
+        tries += 1;
+        if tries > max_retries {
+            break;
+        }
+
+        // wait a bit before retrying
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
     return response;
-}
-
-pub fn dummy_write(port: &mut dyn serialport::SerialPort)
-{
-    let pkg: [u8; 6] = [PKG_END_BYTE; 6];
-    port.write(&pkg).expect("Failed to write to port");
 }
 
 //
@@ -235,7 +259,14 @@ fn write_package_raw(port: &mut dyn serialport::SerialPort, cmd: u8, pin: u8, va
 
 fn read_package_raw(port: &mut dyn serialport::SerialPort, data: &mut [u8; 5]) -> bool {
     // read response from serial port
-    port.read(data).expect("Failed to read from port");
+    let len = port.read(data).unwrap_or(0);
+
+    // ensure the package is complete
+    if len != 5 {
+        //eprintln!("partial package received");
+        return false;
+    }
+
     let [start, cmd, result, checksum, end] = data.to_owned();
 
     // validate start and end bytes
