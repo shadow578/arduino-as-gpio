@@ -26,10 +26,10 @@ typedef enum ReadResult
 //
 // SDSP Implementation
 //
-uint16_t sdsp_crc16(uint8_t pkg[], size_t len)
+uint16_t sdsp_crc16(uint8_t *pkg, uint16_t len)
 {
     uint16_t crc = 0x0000;
-    for (size_t i = 0; i < len; i++)
+    for (uint16_t i = 0; i < len; i++)
     {
         crc ^= pkg[i];
         for (uint8_t j = 0; j < 8; j++)
@@ -69,7 +69,7 @@ read_result_t sdsp_read_packet(uint8_t *pkg, uint16_t max_len, uint16_t &pkg_len
     }
 
     // read the packet data
-    for (size_t i = 0; i < pkg_len; i++)
+    for (uint16_t i = 0; i < pkg_len; i++)
     {
         pkg[i] = sdsp_serial_read_blocking();
     }
@@ -91,7 +91,7 @@ read_result_t sdsp_read_packet(uint8_t *pkg, uint16_t max_len, uint16_t &pkg_len
     return OK;
 }
 
-void sdsp_write_packet(uint8_t *pkg, size_t len)
+void sdsp_write_packet(uint8_t *pkg, uint16_t len)
 {
     // write the start of packet
     sdsp_serial_write(SDSP_PKG_START_BYTE);
@@ -101,7 +101,7 @@ void sdsp_write_packet(uint8_t *pkg, size_t len)
     sdsp_serial_write(len & 0xFF);
 
     // write the packet data
-    for (size_t i = 0; i < len; i++)
+    for (uint16_t i = 0; i < len; i++)
     {
         sdsp_serial_write(pkg[i]);
     }

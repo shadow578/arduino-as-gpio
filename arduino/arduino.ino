@@ -63,7 +63,7 @@ union write_requests_flags
 //
 // Implementation
 //
-#define PKG_BUFFER_LEN 4
+#define PKG_BUFFER_LEN 32
 uint8_t pkg_buffer[PKG_BUFFER_LEN];
 
 void send_error_response(uint8_t error_code)
