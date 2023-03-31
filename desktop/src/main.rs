@@ -1,5 +1,5 @@
 pub mod gpio;
-
+pub mod sdsp;
 use clap::{Parser, Subcommand};
 use std::time::Duration;
 
@@ -21,6 +21,10 @@ enum Command {
         /// enable pullup resistor? (only digital read)
         #[arg(short, long)]
         pullup: bool,
+
+        /// enable pulldown resistor? (only digital read)
+        #[arg(short, long)]
+        pulldown: bool,
     },
 
     /// write to a gpio pin
@@ -29,7 +33,7 @@ enum Command {
         pin: u8,
 
         /// the value to write. (0|1 for digital, 0-255 for analog)
-        value: u8,
+        value: u16,
 
         /// invert the value? (also affects analog write)
         #[arg(short, long)]
@@ -82,36 +86,42 @@ fn main() {
     // get send retries
     let send_retries = args.retries.unwrap_or(3);
 
+    // TODO device ids
+    let own_id = 0xAB;
+    let recipient_id = 0xCA;
+
     // handle command
-    let mut response;
+    let response;
     match args.command {
         Command::Read {
             pin,
             analog,
             inverted,
             pullup,
+            pulldown,
         } => {
             // send command and get response
             response = gpio::write(
                 port.as_mut(),
-                gpio::Command {
-                    kind: gpio::CommandKind::Read,
+                gpio::Request::Read {
                     pin,
-                    value: 0,
                     analog,
                     pullup,
+                    pulldown,
                 },
+                own_id,
+                recipient_id,
                 send_retries,
             );
 
-            // invert result
-            if inverted {
-                if analog {
-                    response.value = 255 - response.value;
-                } else {
-                    response.value = if response.value == 0 { 1 } else { 0 };
-                }
-            }
+            // TODO invert result
+            //if inverted {
+            //    if analog {
+            //        response.value = 255 - response.value;
+            //    } else {
+            //        response.value = if response.value == 0 { 1 } else { 0 };
+            //    }
+            //}
         }
         Command::Write {
             pin,
@@ -131,49 +141,63 @@ fn main() {
             // send command and get response
             response = gpio::write(
                 port.as_mut(),
-                gpio::Command {
-                    kind: gpio::CommandKind::Write,
-                    pin,
-                    value,
-                    analog,
-                    pullup: false,
-                },
+                gpio::Request::Write { pin, value, analog },
+                own_id,
+                recipient_id,
                 send_retries,
             );
         }
     }
 
     // check for error and exit if there is one
-    if response.error != gpio::ErrorKind::None {
-        match response.error {
-            gpio::ErrorKind::CommunicationError { code } => {
+    if let Err(response_error) = response {
+        match response_error {
+            gpio::Error::SDSPError { kind } => {
                 eprintln!(
-                    "Communication failure with GPIO controller on port {} (code={:#02x})",
+                    "Communication failure with GPIO controller on port {} (SDSP error: {:?})",
+                    args.port, kind
+                );
+            }
+            gpio::Error::ControllerError { code } => {
+                eprintln!(
+                "Communication failure with GPIO controller on port {} (Controller error={:#02x})",
+                args.port, code
+            );
+            }
+            gpio::Error::ClientError { code } => {
+                eprintln!(
+                    "Communication failure with GPIO controller on port {} (Client error={:#02x})",
                     args.port, code
                 );
             }
-            gpio::ErrorKind::InvalidPin => {
+            gpio::Error::InvalidPin => {
                 eprintln!("Invalid pin number");
             }
-            gpio::ErrorKind::ResponseMismatch => {
+            gpio::Error::ResponseMismatch => {
                 eprintln!("GPIO Controller response differs from expected response. This could indicate a failing controller, spotty communication, or something else.");
-            }
-            _ => {
-                panic!("you win. Open a issue to claim your cookie.")
             }
         }
 
         std::process::exit(128);
+    } else {
+        match response.unwrap() {
+            gpio::Response::Read { value } => {
+                // print result
+                println!("{}", value);
+
+                // exit without error code
+                if args.no_exit_code {
+                    std::process::exit(0);
+                }
+
+                // exit with error code 0 if HIGH, 1 if LOW
+                std::process::exit(if value == 0 { 1 } else { 0 });
+            }
+            gpio::Response::Write => {
+                // print result
+                println!("OK");
+                std::process::exit(0);
+            }
+        }
     }
-
-    // print result
-    println!("{}", response.value);
-
-    // exit without error code
-    if args.no_exit_code {
-        std::process::exit(0);
-    }
-
-    // exit with error code 0 if HIGH, 1 if LOW
-    std::process::exit(if response.value == 0 { 1 } else { 0 });
 }

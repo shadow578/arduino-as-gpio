@@ -1,55 +1,73 @@
-use std::num::Wrapping;
+use std::time::Duration;
+
+use crate::sdsp::{self, PacketInfo};
 
 //
 // Protocol Constants
 //
-const PKG_START_BYTE: u8 = b'{';
-const PKG_END_BYTE: u8 = b'}';
-const PKG_CHKSUM_PLACEHOLDER_VALUE: u8 = 0x00;
-const PKG_RESPONSE_ERROR_MASK: u8 = 0x80;
+pub const TYPE_READ_REQUEST: u8 = 0x01;
+pub const TYPE_WRITE_REQUEST: u8 = 0x02;
+pub const TYPE_READ_RESPONSE: u8 = 0x03;
+pub const TYPE_WRITE_RESPONSE: u8 = 0x04;
+pub const TYPE_ERROR_RESPONSE: u8 = 0x05;
 
-const CMD_DIGITAL_READ: u8 = 0x1;
-const CMD_DIGITAL_READ_PULLUP: u8 = 0x2;
-const CMD_DIGITAL_WRITE: u8 = 0x3;
-const CMD_ANALOG_READ: u8 = 0x4;
-const CMD_ANALOG_WRITE: u8 = 0x5;
+pub const FLAG_READ_PULLUP: u8 = 1 << 0;
+pub const FLAG_READ_PULLDOWN: u8 = 1 << 1;
+pub const FLAG_READ_ANALOG: u8 = 1 << 2;
 
-const ERR_MALFORMED_PACKAGE: u8 = 0x1;
-const ERR_INVALID_CHECKSUM: u8 = 0x2;
-const ERR_INVALID_PIN: u8 = 0x3;
-const ERR_INVALID_COMMAND: u8 = 0x4;
+pub const FLAG_WRITE_ANALOG: u8 = 1 << 1;
+
+pub const ERR_MALFORMED_PACKET: u8 = 0x01;
+pub const ERR_INVALID_TYPE: u8 = 0x02;
+pub const ERR_INVALID_PIN: u8 = 0x03;
 
 //
 // Data Types
 //
-#[derive(PartialEq, Debug)]
-pub enum CommandKind {
-    Read,
-    Write,
-}
-
-#[derive(PartialEq)]
-pub enum ErrorKind {
-    None,
-    /* one of [ERR_MALFORMED_PACKAGE; ERR_INVALID_CHECKSUM; ERR_INVALID_COMMAND], or invalid data was received */
-    CommunicationError { code: u8 },
-    InvalidPin,
-    ResponseMismatch,
+#[derive(Debug)]
+pub enum Request {
+    /// read request
+    Read {
+        pin: u8,
+        pullup: bool,
+        pulldown: bool,
+        analog: bool,
+    },
+    /// write request
+    Write { pin: u8, value: u16, analog: bool },
 }
 
 #[derive(Debug)]
-pub struct Command {
-    pub kind: CommandKind,
-    pub value: u8,
-    pub analog: bool,
-    pub pullup: bool,
-    pub pin: u8,
+pub enum Response {
+    /// read response
+    Read { value: u16 },
+
+    /// write response
+    Write,
 }
 
-pub struct Response {
-    pub command: Command,
-    pub value: u8,
-    pub error: ErrorKind,
+#[derive(PartialEq, Debug)]
+pub enum Error {
+    // error in SDSP layer
+    SDSPError {
+        kind: sdsp::ReadError,
+    },
+
+    /// error on the GPIO controller
+    ControllerError {
+        code: u8,
+    },
+
+    /// error in the client app
+    ClientError {
+        code: u8,
+    },
+
+    /// ERR_INVALID_PIN
+    InvalidPin,
+
+    /// controller response does not match the request
+    ResponseMismatch,
 }
 
 //
@@ -57,37 +75,41 @@ pub struct Response {
 //
 pub fn write(
     port: &mut dyn serialport::SerialPort,
-    command: Command,
+    command: Request,
+    own_id: u8,
+    recipient_id: u8,
     max_retries: i32,
-) -> Response {
+) -> Result<Response, Error> {
     // do send/receive with retries
     let mut tries = 0;
-    let mut response: Response;
+    let mut response: Result<Response, Error>;
     loop {
         //println!("Sending command: {:?}; Retry {}", command, tries);
 
-        // write the package
-        write_package(port, &command);
+        // write the request packet
+        write_request(port, &command, own_id, recipient_id);
 
         // read the response
-        response = read_package(port);
+        response = read_response(port, own_id, Duration::from_millis(100));
 
-        // validate the response matches the written command
-        // not needed if the response is alreay an error
-        if response.error == ErrorKind::None
-            && (response.command.kind != command.kind
-                || response.command.pullup != command.pullup
-                || response.command.analog != command.analog)
-        {
-            response.error = ErrorKind::ResponseMismatch;
-        }
+        // expect a read request to be answered with a read response
+        //if let Ok(response) = response {
+        //    if request == Request::Read && response != Response::Read {
+        //        response = Err(Error::ResponseMismatch);
+        //    }
+        //
+        //}
 
-        // only retry on certain errors
-        match response.error {
-            ErrorKind::CommunicationError { code: _ } => {}
-            ErrorKind::ResponseMismatch => {}
-            _ => {
-                break;
+        // retry only on certain errors (= possibly transient)
+        if let Err(error) = &response {
+            match error {
+                Error::SDSPError { kind: _ } => {}
+                Error::ControllerError { code: _ } => {}
+                Error::ClientError { code: _ } => {}
+                Error::InvalidPin => {
+                    break;
+                }
+                Error::ResponseMismatch => {}
             }
         }
 
@@ -107,182 +129,111 @@ pub fn write(
 //
 // Internal API
 //
-fn write_package(port: &mut dyn serialport::SerialPort, command: &Command) {
-    // resolve command byte
-    let cmd = match command.kind {
-        CommandKind::Read => {
-            if command.analog {
-                CMD_ANALOG_READ
-            } else {
-                if command.pullup {
-                    CMD_DIGITAL_READ_PULLUP
-                } else {
-                    CMD_DIGITAL_READ
-                }
+fn write_request(
+    port: &mut dyn serialport::SerialPort,
+    request: &Request,
+    own_id: u8,
+    recipient_id: u8,
+) {
+    // build packet
+    let mut pkg = PacketInfo {
+        sender_id: own_id,
+        receiver_id: recipient_id,
+        body: Vec::new(),
+        body_len: 0,
+        checksum: 0,
+    };
+
+    // build packet body
+    match *request {
+        Request::Read {
+            pin,
+            pullup,
+            pulldown,
+            analog,
+        } => {
+            let mut flags = 0;
+            if pullup {
+                flags |= FLAG_READ_PULLUP;
             }
+            if pulldown {
+                flags |= FLAG_READ_PULLDOWN;
+            }
+            if analog {
+                flags |= FLAG_READ_ANALOG;
+            }
+
+            pkg.body = vec![
+                TYPE_READ_REQUEST, //TYPE
+                pin,               // PIN
+                flags,             // FLAGS
+            ];
         }
-        CommandKind::Write => {
-            if command.analog {
-                CMD_ANALOG_WRITE
-            } else {
-                CMD_DIGITAL_WRITE
+        Request::Write { pin, value, analog } => {
+            let mut flags = 0;
+            if analog {
+                flags |= FLAG_WRITE_ANALOG;
             }
+
+            pkg.body = vec![
+                TYPE_WRITE_REQUEST,   // TYPE
+                pin,                  // PIN
+                (value << 8) as u8,   // VALUE (MSB)
+                (value & 0xFF) as u8, // VALUE (LSB)
+                flags,                // FLAGS
+            ];
         }
     };
 
-    // write the package to the serial port
-    write_package_raw(port, cmd, command.pin, command.value);
+    // write the package
+    sdsp::write_packet(port, &mut pkg).expect("Failed to write packet");
 }
 
-fn read_package(port: &mut dyn serialport::SerialPort) -> Response {
-    // read raw response package
-    let mut pkg: [u8; 5] = [0; 5];
-    if !read_package_raw(port, &mut pkg) {
-        return Response {
-            command: Command {
-                kind: CommandKind::Read,
-                value: 0,
-                analog: false,
-                pullup: false,
-                pin: 0,
-            },
-            value: 0,
-            error: ErrorKind::CommunicationError { code: 0xfe },
-        };
-    }
+fn read_response(
+    port: &mut dyn serialport::SerialPort,
+    own_id: u8,
+    timeout: Duration,
+) -> Result<Response, Error> {
+    // read the package data
+    let pkg = match sdsp::read_packet(port, own_id, timeout) {
+        Ok(pkg) => pkg.body,
+        Err(err) => return Err(Error::SDSPError { kind: err }),
+    };
 
-    // unpack package
-    let [_, cmd, result, _, _] = pkg;
-
-    // check if error bit is set
-    if (cmd & PKG_RESPONSE_ERROR_MASK) != 0 {
-        // map result to error kind
-        let error = match result {
-            ERR_MALFORMED_PACKAGE => ErrorKind::CommunicationError { code: result },
-            ERR_INVALID_CHECKSUM => ErrorKind::CommunicationError { code: result },
-            ERR_INVALID_PIN => ErrorKind::InvalidPin,
-            ERR_INVALID_COMMAND => ErrorKind::CommunicationError { code: result },
-            _ => ErrorKind::CommunicationError { code: result },
-        };
-
-        return Response {
-            command: Command {
-                kind: CommandKind::Read,
-                value: 0,
-                analog: false,
-                pullup: false,
-                pin: 0,
-            },
-            value: 0,
-            error: error,
-        };
-    }
-
-    // resolve command
-    let command: CommandKind;
-    let pullup: bool;
-    let analog: bool;
-    match cmd {
-        CMD_DIGITAL_READ => {
-            command = CommandKind::Read;
-            pullup = false;
-            analog = false;
-        }
-        CMD_DIGITAL_READ_PULLUP => {
-            command = CommandKind::Read;
-            pullup = true;
-            analog = false;
-        }
-        CMD_DIGITAL_WRITE => {
-            command = CommandKind::Write;
-            pullup = false;
-            analog = false;
-        }
-        CMD_ANALOG_READ => {
-            command = CommandKind::Read;
-            pullup = false;
-            analog = true;
-        }
-        CMD_ANALOG_WRITE => {
-            command = CommandKind::Write;
-            pullup = false;
-            analog = true;
-        }
-        _ => {
-            // invalid command
-            //eprintln!("GPIO response contains invalid command");
-            return Response {
-                command: Command {
-                    kind: CommandKind::Read,
-                    value: 0,
-                    analog: false,
-                    pullup: false,
-                    pin: 0,
-                },
-                value: 0,
-                error: ErrorKind::CommunicationError { code: 0xfd },
-            };
-        }
-    }
-
-    // build the response
-    return Response {
-        command: Command {
-            kind: command,
-            value: 0,
-            analog: analog,
-            pullup: pullup,
-            pin: 0,
-        },
-        value: result,
-        error: ErrorKind::None,
+    // check packet type and parse
+    return match pkg.get(0) {
+        Some(&TYPE_READ_RESPONSE) => parse_read_response(&pkg),
+        Some(&TYPE_WRITE_RESPONSE) => parse_write_response(&pkg),
+        Some(&TYPE_ERROR_RESPONSE) => parse_error_response(&pkg),
+        _ => Err(Error::ClientError {
+            code: ERR_INVALID_TYPE,
+        }),
     };
 }
 
-//
-// RAW
-//
-fn write_package_raw(port: &mut dyn serialport::SerialPort, cmd: u8, pin: u8, val: u8) {
-    // calculate checksum, overflowing u8 arithmetic
-    let checksum: u8 = (Wrapping(PKG_START_BYTE)
-        + Wrapping(cmd)
-        + Wrapping(pin)
-        + Wrapping(val)
-        + Wrapping(PKG_CHKSUM_PLACEHOLDER_VALUE)
-        + Wrapping(PKG_END_BYTE))
-    .0;
+fn parse_read_response(pkg: &Vec<u8>) -> Result<Response, Error> {
+    if let Some(value_msb) = pkg.get(1) {
+        if let Some(value_lsb) = pkg.get(2) {
+            let value = ((*value_msb as u16) << 8) | (*value_lsb as u16);
+            return Ok(Response::Read { value });
+        }
+    }
 
-    // build and write package
-    let pkg: [u8; 6] = [PKG_START_BYTE, cmd, pin, val, checksum, PKG_END_BYTE];
-    port.write(&pkg).expect("Failed to write to port");
+    return Err(Error::ClientError {
+        code: ERR_MALFORMED_PACKET,
+    });
 }
 
-fn read_package_raw(port: &mut dyn serialport::SerialPort, data: &mut [u8; 5]) -> bool {
-    // read response from serial port
-    let len = port.read(data).unwrap_or(0);
+fn parse_write_response(_pkg: &Vec<u8>) -> Result<Response, Error> {
+    return Ok(Response::Write);
+}
 
-    // ensure the package is complete
-    if len != 5 {
-        //eprintln!("partial package received");
-        return false;
+fn parse_error_response(pkg: &Vec<u8>) -> Result<Response, Error> {
+    if let Some(error_code) = pkg.get(1) {
+        return Err(Error::ControllerError { code: *error_code });
     }
 
-    let [start, cmd, result, checksum, end] = data.to_owned();
-
-    // validate start and end bytes
-    if start != PKG_START_BYTE || end != PKG_END_BYTE {
-        //eprintln!("malformed package received");
-        return false;
-    }
-
-    // calculate expected checksum
-    let expected_checksum: u8 = (Wrapping(PKG_START_BYTE)
-        + Wrapping(cmd)
-        + Wrapping(result)
-        + Wrapping(PKG_CHKSUM_PLACEHOLDER_VALUE)
-        + Wrapping(PKG_END_BYTE))
-    .0;
-
-    // validate checksum
-    return checksum == expected_checksum;
+    return Err(Error::ClientError {
+        code: ERR_MALFORMED_PACKET,
+    });
 }
