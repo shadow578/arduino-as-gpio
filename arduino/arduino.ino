@@ -35,27 +35,11 @@ void sdsp_serial_write(uint8_t data)
 #define TYPE_WRITE_RESPONSE 0x04
 #define TYPE_ERROR_RESPONSE 0x05
 
-union read_requests_flags
-{
-    uint8_t flags;
-    struct
-    {
-        uint8_t pullup : 1;
-        uint8_t pulldown : 1;
-        uint8_t analog : 1;
-        uint8_t reserved : 5;
-    };
-};
+#define FLAG_READ_PULLUP (1 << 0)
+#define FLAG_READ_PULLDOWN (1 << 1)
+#define FLAG_READ_ANALOG (1 << 2)
 
-union write_requests_flags
-{
-    uint8_t flags;
-    struct
-    {
-        uint8_t analog : 1;
-        uint8_t reserved : 7;
-    };
-};
+#define FLAG_WRITE_ANALOG (1 << 1)
 
 #define ERR_MALFORMED_PACKET 0x01
 #define ERR_INVALID_TYPE 0x02
@@ -93,23 +77,23 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
         if (pkg_len != 3)
             break;
         uint8_t pin = pkg_buffer[1];
-        read_requests_flags flags = {pkg_buffer[2]};
+        uint8_t flags = pkg_buffer[2];
 
         // ensure pin is valid
-        if (!flags.analog && !IS_VALID_DIGITAL_PIN(pin))
+        if (!(flags & FLAG_READ_ANALOG) && !IS_VALID_DIGITAL_PIN(pin))
             break;
-        if (flags.analog && !IS_VALID_ANALOG_PIN(pin))
+        if ((flags & FLAG_READ_ANALOG) && !IS_VALID_ANALOG_PIN(pin))
             break;
 
         // convert pin number to pin
-        pin = flags.analog ? PIN_NO_TO_ANALOG_PIN(pin) : PIN_NO_TO_DIGITAL_PIN(pin);
+        pin = (flags & FLAG_READ_ANALOG) ? PIN_NO_TO_ANALOG_PIN(pin) : PIN_NO_TO_DIGITAL_PIN(pin);
 
         // set pin mode
-        if (flags.pullup)
+        if (flags & FLAG_READ_PULLUP)
         {
             pinMode(pin, INPUT_PULLUP);
         }
-        else if (flags.pulldown)
+        else if (flags & FLAG_READ_PULLDOWN)
         {
 #ifdef INPUT_PULLDOWN
             pinMode(pin, INPUT_PULLDOWN);
@@ -124,7 +108,7 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
 
         // read pin value
         uint16_t value = 0;
-        if (flags.analog)
+        if (flags & FLAG_READ_ANALOG)
         {
             value = analogRead(pin);
         }
@@ -145,22 +129,23 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
             break;
         uint8_t pin = pkg_buffer[1];
         uint16_t value = (pkg_buffer[2] << 8) | pkg_buffer[3];
-        write_requests_flags flags = {pkg_buffer[4]};
+        uint8_t flags = {pkg_buffer[4]};
 
-        // ensure pin is valid
-        if (!flags.analog && !IS_VALID_DIGITAL_PIN(pin))
-            break;
-        if (flags.analog && !IS_VALID_ANALOG_PIN(pin))
-            break;
+        //// ensure pin is valid
+        // if (!flags.analog && !IS_VALID_DIGITAL_PIN(pin))
+        //     break;
+        // if (flags.analog && !IS_VALID_ANALOG_PIN(pin))
+        //     break;
 
         // convert pin number to pin
-        pin = flags.analog ? PIN_NO_TO_ANALOG_PIN(pin) : PIN_NO_TO_DIGITAL_PIN(pin);
+        // pin = flags.analog ? PIN_NO_TO_ANALOG_PIN(pin) : PIN_NO_TO_DIGITAL_PIN(pin);
+        pin = PIN_NO_TO_DIGITAL_PIN(pin);
 
         // set pin mode
         pinMode(pin, OUTPUT);
 
         // write pin value
-        if (flags.analog)
+        if (flags & FLAG_WRITE_ANALOG)
         {
             analogWrite(pin, value);
         }
