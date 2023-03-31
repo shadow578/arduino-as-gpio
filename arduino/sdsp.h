@@ -109,9 +109,9 @@ read_result_t sdsp_read_packet(uint8_t *buffer,
     }
 
     // read the checksum
-    buffer[i++] = sdsp_serial_read_blocking(); // MSB
-    buffer[i++] = sdsp_serial_read_blocking(); // LSB
-    uint16_t chksum = (buffer[i - 2] << 8) | buffer[i - 1];
+    buffer[i++] = 0; // MSB
+    buffer[i++] = 0; // LSB
+    uint16_t chksum = (sdsp_serial_read_blocking() << 8) | sdsp_serial_read_blocking();
 
     // read the end of packet
     if ((buffer[i++] = sdsp_serial_read_blocking()) != SDSP_PKG_END_BYTE)
@@ -137,7 +137,7 @@ void sdsp_write_packet(uint8_t *body,
                        uint8_t receiver_id)
 {
     // allocate a buffer for the packet
-    uint16_t pkg_len = body_len + 5;
+    uint16_t pkg_len = body_len + 8;
     uint8_t pkg[pkg_len];
 
     // assemble packet:

@@ -192,7 +192,7 @@ void loop()
     // accept sdsp package
     uint16_t pkg_len = 0;
     uint8_t sender_id = 0;
-    read_result_t result = sdsp_read_packet(pkg_buffer, PKG_BUFFER_LEN, &pkg_len, &sender_id, OWN_DEVICE_ID);
+    read_result_t result = sdsp_read_packet(pkg_buffer, PKG_BUFFER_LEN, pkg_len, sender_id, OWN_DEVICE_ID);
 
     switch (result)
     {
