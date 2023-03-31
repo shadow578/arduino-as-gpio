@@ -53,7 +53,7 @@ pub fn read_packet(
     let start = std::time::Instant::now();
 
     // read packet in chunks of 64 bytes
-    let mut buf: [u8; 64] = [0; 64];
+    const MAX_BUF_SIZE: usize = 64;
     let mut pkg = PacketInfo {
         sender_id: 0,
         receiver_id: 0,
@@ -63,7 +63,20 @@ pub fn read_packet(
     };
     let mut state = ReadState::StartByte;
     loop {
-        // read from port
+        // check timeout
+        if start.elapsed() > timeout {
+            return Err(ReadError::Timeout);
+        }
+
+        // figure out how many bytes are available to read
+        let bytes_available =
+            std::cmp::min(port.bytes_to_read().unwrap_or(0) as usize, MAX_BUF_SIZE);
+        if bytes_available == 0 {
+            continue;
+        }
+
+        // read n bytes from port
+        let mut buf = vec![0; bytes_available];
         let bytes_read = port.read(&mut buf).unwrap_or(0);
 
         // handle every byte using state machine
@@ -133,11 +146,6 @@ pub fn read_packet(
                     }
                 }
             }
-        }
-
-        // check timeout
-        if start.elapsed() > timeout {
-            return Err(ReadError::Timeout);
         }
     }
 }

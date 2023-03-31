@@ -111,6 +111,9 @@ pub fn write(
                 }
                 Error::ResponseMismatch => {}
             }
+        } else {
+            // no error
+            break;
         }
 
         // update retries
