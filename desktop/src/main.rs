@@ -30,6 +30,11 @@ enum Command {
         /// enable pulldown resistor? (only digital read)
         #[arg(long)]
         pulldown: bool,
+
+        /// read the value currently output on the pin
+        /// (digitalRead without setting pinMode first)
+        #[arg(long)]
+        direct: bool,
     },
 
     /// write to a gpio pin
@@ -99,9 +104,10 @@ fn main() {
             inverted,
             pullup,
             pulldown,
+            direct,
         } => {
             // create the request
-            let request = ReadRequest::new(pin, pullup, pulldown, analog, inverted, false);
+            let request = ReadRequest::new(pin, pullup, pulldown, analog, inverted, direct);
 
             // send the request and handle the response
             let response = host.send(&request, target_id);
