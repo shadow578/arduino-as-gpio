@@ -27,6 +27,15 @@ the first byte of the packet body specifies the type of packet. depending on the
 the read request packet body consists of a single-byte pin number that specifies the pin to operate on and a single-byte flags field.
 a read request is answered with a read response packet.
 
+a read request roughly corrosponds to the following arduino code:
+
+```cpp
+pinMode(pin, INPUT); // or INPUT_PULLUP or INPUT_PULLDOWN depending on the flags
+digitalRead(pin);
+// ... or ...
+analogRead(pin)
+```
+
     [0x01][pin][flags]
      1b    1b   1b
 
@@ -53,6 +62,15 @@ the read response packet body consists of a two-byte value field that contains t
 the write request packet body consists of a single-byte pin number that specifies the pin to operate on, a single-byte flags field and a two-byte value field.
 a write request is answered with a write response packet.
 
+a write request roughly corrosponds to the following arduino code:
+
+```cpp
+pinMode(pin, OUTPUT);
+digitalWrite(pin, value == 0 ? LOW : HIGH);
+// ... or ...
+analogWrite(pin, value)
+```
+
     [0x02][pin][value][flags]
      1b    1b   2b    1b
 
@@ -78,6 +96,13 @@ the write response contains no additional data.
 
 the toggle request packet body only consists of a single-byte pin number that specifies the pin to operate on.
 the toggle request only works on digital pins and toggles the pin between HIGH and LOW.
+
+a toggle request roughly corrosponds to the following arduino code:
+
+```cpp
+pinMode(pin, OUTPUT);
+digitalWrite(pin, !digitalRead(pin));
+```
 
     [0x06][pin]
      1b    1b
