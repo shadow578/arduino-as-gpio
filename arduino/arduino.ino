@@ -4,11 +4,21 @@
 #define COMM_BAUD_RATE 115200
 #define OWN_DEVICE_ID 0xCA
 
-#define IS_VALID_DIGITAL_PIN(x) ((x) >= 2 && (x) <= 13)
-#define IS_VALID_ANALOG_PIN(x) ((x) >= 0 && (x) <= 8)
+#define IS_DIGITAL_PIN(x) ((x) >= 2 && (x) <= 13)
+#define IS_ANALOG_PIN(x) ((x) >= A0 && (x) < A7)
+#define IS_PWM_PIN(x) (x == 3 || x == 5 || x == 6 || x == 9 || x == 10 || x == 11)
 
-#define PIN_NO_TO_DIGITAL_PIN(x) (x)
-#define PIN_NO_TO_ANALOG_PIN(x) (A0 + x)
+// only analog pins can use analogRead()
+#define IS_VALID_PIN_FOR_ANALOG_READ(x) IS_ANALOG_PIN(x)
+
+// both analog and digital pins can use digitalRead()
+#define IS_VALID_PIN_FOR_DIGITAL_READ(x) IS_DIGITAL_PIN(x) || IS_ANALOG_PIN(x)
+
+// both analog and digital pins can use digitalWrite()
+#define IS_VALID_PIN_FOR_DIGITAL_WRITE(x) IS_DIGITAL_PIN(x) || IS_ANALOG_PIN(x)
+
+// on most arduinos, only some pins can do analogWrite() (PWM pins)
+#define IS_VALID_PIN_FOR_ANALOG_WRITE(x) IS_PWM_PIN(x)
 
 //
 // SDSP
@@ -75,21 +85,23 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
     {
         // ensure packet length is correct
         if (pkg_len != 3)
+        {
+            send_error_response(ERR_MALFORMED_PACKET, from);
             break;
+        }
         uint8_t pin = pkg_buffer[1];
         uint8_t flags = pkg_buffer[2];
 
         // ensure pin is valid
-        if (!(flags & FLAG_READ_ANALOG) && !IS_VALID_DIGITAL_PIN(pin))
+        bool analog = flags & FLAG_READ_ANALOG;
+        if ((!analog && !IS_VALID_PIN_FOR_DIGITAL_READ(pin)) || (analog && !IS_VALID_PIN_FOR_ANALOG_READ(pin)))
+        {
+            send_error_response(ERR_INVALID_PIN, from);
             break;
-        if ((flags & FLAG_READ_ANALOG) && !IS_VALID_ANALOG_PIN(pin))
-            break;
-
-        // convert pin number to pin
-        pin = (flags & FLAG_READ_ANALOG) ? PIN_NO_TO_ANALOG_PIN(pin) : PIN_NO_TO_DIGITAL_PIN(pin);
+        }
 
         // set pin mode
-        if (flags & FLAG_READ_PULLUP)
+        if (analog)
         {
             pinMode(pin, INPUT_PULLUP);
         }
@@ -108,7 +120,7 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
 
         // read pin value
         uint16_t value = 0;
-        if (flags & FLAG_READ_ANALOG)
+        if (analog)
         {
             value = analogRead(pin);
         }
@@ -118,40 +130,41 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
         }
 
         // send response
-        uint8_t response[4] = {TYPE_READ_RESPONSE, pin, (uint8_t)(value >> 8), (uint8_t)value};
-        sdsp_write_packet(response, 4, OWN_DEVICE_ID, from);
+        uint8_t response[3] = {TYPE_READ_RESPONSE, (uint8_t)(value >> 8), (uint8_t)value};
+        sdsp_write_packet(response, 3, OWN_DEVICE_ID, from);
         return;
     }
     case TYPE_WRITE_REQUEST:
     {
         // ensure packet length is correct
         if (pkg_len != 5)
+        {
+            send_error_response(ERR_MALFORMED_PACKET, from);
             break;
+        }
         uint8_t pin = pkg_buffer[1];
         uint16_t value = (pkg_buffer[2] << 8) | pkg_buffer[3];
         uint8_t flags = {pkg_buffer[4]};
 
-        //// ensure pin is valid
-        // if (!flags.analog && !IS_VALID_DIGITAL_PIN(pin))
-        //     break;
-        // if (flags.analog && !IS_VALID_ANALOG_PIN(pin))
-        //     break;
-
-        // convert pin number to pin
-        // pin = flags.analog ? PIN_NO_TO_ANALOG_PIN(pin) : PIN_NO_TO_DIGITAL_PIN(pin);
-        pin = PIN_NO_TO_DIGITAL_PIN(pin);
+        // ensure pin is valid
+        bool analog = flags & FLAG_WRITE_ANALOG;
+        if ((!analog && !IS_VALID_PIN_FOR_DIGITAL_WRITE(pin)) || (analog && !IS_VALID_PIN_FOR_ANALOG_WRITE(pin)))
+        {
+            send_error_response(ERR_INVALID_PIN, from);
+            break;
+        }
 
         // set pin mode
         pinMode(pin, OUTPUT);
 
         // write pin value
-        if (flags & FLAG_WRITE_ANALOG)
+        if (analog)
         {
             analogWrite(pin, value);
         }
         else
         {
-            digitalWrite(pin, value);
+            digitalWrite(pin, value == 0x0 ? LOW : HIGH);
         }
 
         // send response
@@ -160,11 +173,12 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
         return;
     }
     default:
-        break;
+        send_error_response(ERR_INVALID_TYPE, from);
+        return;
     }
 
-    // default to error
-    send_error_response(ERR_INVALID_TYPE, from);
+    // default to malformed packet error
+    send_error_response(ERR_MALFORMED_PACKET, from);
 }
 
 void setup()
