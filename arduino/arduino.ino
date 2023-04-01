@@ -55,6 +55,7 @@ void sdsp_serial_write(uint8_t data)
 #define FLAG_READ_PULLDOWN (1 << 1)
 #define FLAG_READ_ANALOG (1 << 2)
 #define FLAG_READ_INVERT (1 << 3)
+#define FLAG_READ_DIRECT (1 << 4)
 
 #define FLAG_WRITE_ANALOG (1 << 1)
 #define FLAG_WRITE_INVERT (1 << 2)
@@ -108,22 +109,36 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
             break;
         }
 
-        // set pin mode
-        if (analog)
+        // do not set pin mode in DIRECT mode
+        if (flags & FLAG_READ_DIRECT)
         {
-            pinMode(pin, INPUT_PULLUP);
-        }
-        else if (flags & FLAG_READ_PULLDOWN)
-        {
-#ifdef INPUT_PULLDOWN
-            pinMode(pin, INPUT_PULLDOWN);
-#else
-            pinMode(pin, INPUT);
-#endif
+            // DIRECT mode cannot be used with analog, pullup or pulldown
+            if (analog || flags & (FLAG_READ_PULLUP) || flags & FLAG_READ_PULLDOWN)
+            {
+                send_error_response(ERR_INVALID_TYPE, from);
+                break;
+            }
         }
         else
         {
-            pinMode(pin, INPUT);
+
+            // set pin mode
+            if (analog)
+            {
+                pinMode(pin, INPUT_PULLUP);
+            }
+            else if (flags & FLAG_READ_PULLDOWN)
+            {
+#ifdef INPUT_PULLDOWN
+                pinMode(pin, INPUT_PULLDOWN);
+#else
+                pinMode(pin, INPUT);
+#endif
+            }
+            else
+            {
+                pinMode(pin, INPUT);
+            }
         }
 
         // read pin value

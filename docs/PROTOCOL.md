@@ -28,16 +28,16 @@ a read request is answered with a read response packet.
     [0x01][pin][flags]
      1b    1b   1b
 
-| Flag Bit # | Name     | Description              |
-| ---------- | -------- | ------------------------ |
-| 1 (LSB)    | PULLUP   | enable pullup resistor   |
-| 2          | PULLDOWN | enable pulldown resistor |
-| 3          | ANALOG   | analog read              |
-| 4          | INVERT   | invert the value         |
-| 5          | -        | reserved                 |
-| 6          | -        | reserved                 |
-| 7          | -        | reserved                 |
-| 8 (MSB)    | -        | reserved                 |
+| Flag Bit # | Name     | Description                                   |
+| ---------- | -------- | --------------------------------------------- |
+| 1 (LSB)    | PULLUP   | enable pullup resistor                        |
+| 2          | PULLDOWN | enable pulldown resistor                      |
+| 3          | ANALOG   | analog read                                   |
+| 4          | INVERT   | invert the value                              |
+| 5          | DIRECT   | call digitalRead without setting the pin mode |
+| 6          | -        | reserved                                      |
+| 7          | -        | reserved                                      |
+| 8 (MSB)    | -        | reserved                                      |
 
 ### Read Response
 

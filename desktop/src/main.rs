@@ -101,7 +101,7 @@ fn main() {
             pulldown,
         } => {
             // create the request
-            let request = ReadRequest::new(pin, pullup, pulldown, analog, inverted);
+            let request = ReadRequest::new(pin, pullup, pulldown, analog, inverted, false);
 
             // send the request and handle the response
             let response = host.send(&request, target_id);
