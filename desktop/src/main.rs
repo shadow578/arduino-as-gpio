@@ -1,8 +1,13 @@
 pub mod gpio;
 pub mod sdsp;
+
 use clap::{Parser, Subcommand};
+use gpio::{read::ReadRequest, write::WriteRequest, Error, HostController};
 use std::time::Duration;
 
+//
+// Clap argument structures
+//
 #[derive(Subcommand, Debug)]
 enum Command {
     /// read from a gpio pin
@@ -19,11 +24,11 @@ enum Command {
         inverted: bool,
 
         /// enable pullup resistor? (only digital read)
-        #[arg(short, long)]
+        #[arg(long)]
         pullup: bool,
 
         /// enable pulldown resistor? (only digital read)
-        #[arg(short, long)]
+        #[arg(long)]
         pulldown: bool,
     },
 
@@ -52,10 +57,6 @@ struct Args {
     /// the serial port to use for communication
     port: String,
 
-    /// subcommand to use
-    #[command(subcommand)]
-    command: Command,
-
     /// the baud rate to use for communication
     #[arg(short, long)]
     baud: Option<u32>,
@@ -67,31 +68,30 @@ struct Args {
     /// how many times to retry sending a command
     #[arg(short, long)]
     retries: Option<i32>,
+
+    /// the address of the host controller
+    #[arg(short, long)]
+    own_id: Option<u8>,
+
+    /// the address of the target controller. if not specified, defaults to a broadcast (only a valid strategy if a single controller is attached)
+    target_id: Option<u8>,
+
+    /// subcommand to use
+    #[command(subcommand)]
+    command: Command,
 }
 
 fn main() {
-    // parse command line arguments
+    // parse command line args
     let args = Args::parse();
 
-    // open port
-    let baud = args.baud.unwrap_or(115200);
-    let mut port = serialport::new(args.port.clone(), baud)
-        .timeout(Duration::from_millis(100))
-        .open()
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to open serial port: {}", e);
-            std::process::exit(128);
-        });
+    // create the host controller instance
+    let mut host = create_host_controller(&args);
 
-    // get send retries
-    let send_retries = args.retries.unwrap_or(3);
+    // resolve target id, default to boardcast (only a valid strategy for single device networks)
+    let target_id = args.target_id.unwrap_or(0xFF);
 
-    // TODO device ids
-    let own_id = 0xAB;
-    let recipient_id = 0xCA;
-
-    // handle command
-    let response;
+    // match the subcommand
     match args.command {
         Command::Read {
             pin,
@@ -100,104 +100,94 @@ fn main() {
             pullup,
             pulldown,
         } => {
-            // send command and get response
-            response = gpio::write(
-                port.as_mut(),
-                gpio::Request::Read {
-                    pin,
-                    analog,
-                    pullup,
-                    pulldown,
-                },
-                own_id,
-                recipient_id,
-                send_retries,
-            );
+            // create the request
+            let request = ReadRequest::new(pin, analog, pullup, pulldown);
 
-            // TODO invert result
-            //if inverted {
-            //    if analog {
-            //        response.value = 255 - response.value;
-            //    } else {
-            //        response.value = if response.value == 0 { 1 } else { 0 };
-            //    }
-            //}
+            // send the request and handle the response
+            let response = host.send(&request, target_id);
+            match response {
+                Ok(response) => {
+                    // print the response value
+                    println!("{}", response.value);
+
+                    // exit with the correct code
+                    if !args.no_exit_code {
+                        std::process::exit(response.value as i32);
+                    }
+                }
+                Err(error) => {
+                    print_gpio_error_and_exit(error);
+                }
+            }
         }
         Command::Write {
             pin,
-            mut value,
+            value,
             inverted,
             analog,
         } => {
-            // invert value
-            if inverted {
-                if analog {
-                    value = 255 - value;
-                } else {
-                    value = if value == 0 { 1 } else { 0 };
+            // create the request
+            let request = WriteRequest::new(pin, value, analog);
+
+            // send the request
+            let response = host.send(&request, target_id);
+            match response {
+                Ok(_) => {
+                    println!("{}", value);
+                }
+                Err(error) => {
+                    print_gpio_error_and_exit(error);
                 }
             }
-
-            // send command and get response
-            response = gpio::write(
-                port.as_mut(),
-                gpio::Request::Write { pin, value, analog },
-                own_id,
-                recipient_id,
-                send_retries,
-            );
         }
     }
 
-    // check for error and exit if there is one
-    if let Err(response_error) = response {
-        match response_error {
-            gpio::Error::SDSPError { kind } => {
-                eprintln!(
-                    "Communication failure with GPIO controller on port {} (SDSP error: {:?})",
-                    args.port, kind
-                );
-            }
-            gpio::Error::ControllerError { code } => {
-                eprintln!(
-                "Communication failure with GPIO controller on port {} (Controller error={:#02x})",
-                args.port, code
+    // exit with success code
+    std::process::exit(0);
+}
+
+fn create_host_controller(args: &Args) -> HostController {
+    // create the serial port
+    let port = serialport::new(args.port.clone(), args.baud.unwrap_or(115200))
+        .timeout(Duration::from_millis(100))
+        .open()
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to open serial port: {}", e);
+            std::process::exit(128);
+        });
+
+    // create the host controller instance
+    HostController::new(
+        port,
+        args.own_id.unwrap_or(0xAA),
+        Some(Duration::from_millis(100)),
+        args.retries,
+    )
+}
+
+fn print_gpio_error_and_exit(error: Error) -> ! {
+    // print a nice error message
+    match error {
+        Error::SDSPError { kind } => {
+            eprintln!(
+                "communication failed with remote controller (SDSP error: {:?})",
+                kind
             );
-            }
-            gpio::Error::ClientError { code } => {
-                eprintln!(
-                    "Communication failure with GPIO controller on port {} (Client error={:#02x})",
-                    args.port, code
-                );
-            }
-            gpio::Error::InvalidPin => {
-                eprintln!("Invalid pin number");
-            }
-            gpio::Error::ResponseMismatch => {
-                eprintln!("GPIO Controller response differs from expected response. This could indicate a failing controller, spotty communication, or something else.");
-            }
         }
-
-        std::process::exit(128);
-    } else {
-        match response.unwrap() {
-            gpio::Response::Read { value } => {
-                // print result
-                println!("{}", value);
-
-                // exit without error code
-                if args.no_exit_code {
-                    std::process::exit(0);
-                }
-
-                // exit with error code 0 if HIGH, 1 if LOW
-                std::process::exit(if value == 0 { 1 } else { 0 });
-            }
-            gpio::Response::Write => {
-                // print result
-                println!("OK");
-                std::process::exit(0);
-            }
+        Error::RemoteError { code } => {
+            eprintln!("remote controller returned error code {:#04x}", code);
         }
-    }
+        Error::HostError { code } => {
+            eprintln!("host controller returned error code {:#04x}", code);
+        }
+        Error::InvalidPin => {
+            eprintln!("the pin number is invalid for the requested operation");
+        }
+        Error::ResponseMismatch => {
+            eprintln!("the response from the remote controller did not match the expected response. this could be caused by a communication issue or a incompatible controller");
+        }
+    };
+
+    // exit with error code
+    std::process::exit(128);
 }
