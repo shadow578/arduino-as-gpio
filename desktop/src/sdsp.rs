@@ -19,7 +19,7 @@ pub enum ReadError {
 }
 
 #[derive(Debug)]
-pub struct PacketInfo {
+pub struct Packet {
     pub sender_id: u8,
     pub receiver_id: u8,
     pub body: Vec<u8>,
@@ -30,12 +30,23 @@ pub struct PacketInfo {
     /// internal, set to 0 when creating a new packet
     pub checksum: u16,
 }
+impl Packet {
+    pub fn new(sender_id: u8, receiver_id: u8, body: Vec<u8>) -> Packet {
+        Packet {
+            sender_id: sender_id,
+            receiver_id: receiver_id,
+            body: body,
+            body_len: 0,
+            checksum: 0,
+        }
+    }
+}
 
 pub fn read_packet(
-    port: &mut dyn SerialPort,
+    port: &mut Box<dyn SerialPort>,
     own_id: u8,
     timeout: Duration,
-) -> Result<PacketInfo, ReadError> {
+) -> Result<Packet, ReadError> {
     #[derive(Debug)]
     enum ReadState {
         StartByte,
@@ -54,7 +65,7 @@ pub fn read_packet(
 
     // read packet in chunks of 64 bytes
     const MAX_BUF_SIZE: usize = 64;
-    let mut pkg = PacketInfo {
+    let mut pkg = Packet {
         sender_id: 0,
         receiver_id: 0,
         body_len: 0,
@@ -151,8 +162,8 @@ pub fn read_packet(
 }
 
 pub fn write_packet(
-    port: &mut dyn SerialPort,
-    packet: &mut PacketInfo,
+    port: &mut Box<dyn SerialPort>,
+    packet: &mut Packet,
 ) -> Result<usize, std::io::Error> {
     // init internal fields of packet
     packet.body_len = packet.body.len() as u16;
@@ -174,7 +185,7 @@ pub fn write_packet(
 //
 // Internal Functions
 //
-fn assemble_packet(pkg: &PacketInfo) -> Vec<u8> {
+fn assemble_packet(pkg: &Packet) -> Vec<u8> {
     let mut data: Vec<u8> = Vec::new();
 
     // prologue
