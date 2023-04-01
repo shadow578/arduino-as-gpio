@@ -3,7 +3,6 @@
 the Arduino-as-GPIO protocol is a simple protocol that allows you to use your Arduino as GPIO for any Computer. The Protocol is a simple binary protocol that is designed to be flexible and fast.
 The Protocol is made up of two distinctive layers, one which handles seperation of packets ( [SDSP](/docs/SDSP.md)) and one which handles the actual commands (described in this document).
 
-
 ## Command Protocol
 
 the command protocol is responsible for handling the actual commands.
@@ -32,7 +31,7 @@ the read request packet body consists of a single-byte pin number that specifies
 | 1 (LSB)    | enable pullup resistor   |
 | 2          | enable pulldown resistor |
 | 3          | analog read              |
-| 4          | reserved                 |
+| 4          | invert the value         |
 | 5          | reserved                 |
 | 6          | reserved                 |
 | 7          | reserved                 |
@@ -44,16 +43,16 @@ the write request packet body consists of a single-byte pin number that specifie
 
 > [0x02][pin][value][flags]
 
-| Flag Bit # | Description  |
-| ---------- | ------------ |
-| 1 (LSB)    | analog write |
-| 2          | reserved     |
-| 3          | reserved     |
-| 4          | reserved     |
-| 5          | reserved     |
-| 6          | reserved     |
-| 7          | reserved     |
-| 8 (MSB)    | reserved     |
+| Flag Bit # | Description      |
+| ---------- | ---------------- |
+| 1 (LSB)    | analog write     |
+| 2          | invert the value |
+| 3          | reserved         |
+| 4          | reserved         |
+| 5          | reserved         |
+| 6          | reserved         |
+| 7          | reserved         |
+| 8 (MSB)    | reserved         |
 
 ### Read Response
 

@@ -116,8 +116,6 @@ impl HostController {
         let pkg_body = request.get_packet_body();
         let mut pkg = sdsp::Packet::new(self.id, recipient_id, pkg_body);
 
-        println!("send_single @write: {:?} -> {:?}", request, pkg);
-
         // send the packet using SDSP
         let write_result = sdsp::write_packet(&mut self.port, &mut pkg);
         if write_result.is_err() {
@@ -129,9 +127,6 @@ impl HostController {
         if let Err(kind) = response_pkg {
             return Err(Error::SDSPError { kind });
         }
-
-        println!("send_single @read: {:?}", response_pkg);
-
 
         // parse the response
         let response_pkg_body = response_pkg.unwrap().body;

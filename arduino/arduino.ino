@@ -20,6 +20,12 @@
 // on most arduinos, only some pins can do analogWrite() (PWM pins)
 #define IS_VALID_PIN_FOR_ANALOG_WRITE(x) IS_PWM_PIN(x)
 
+// invert the value from analogRead()
+#define INVERT_ANALOG_READ_VALUE(x) (1024 - x)
+
+// invert the value supplied to analogWrite()
+#define INVERT_ANALOG_WRITE_VALUE(x) (255 - x)
+
 //
 // SDSP
 //
@@ -48,8 +54,10 @@ void sdsp_serial_write(uint8_t data)
 #define FLAG_READ_PULLUP (1 << 0)
 #define FLAG_READ_PULLDOWN (1 << 1)
 #define FLAG_READ_ANALOG (1 << 2)
+#define FLAG_READ_INVERT (1 << 3)
 
 #define FLAG_WRITE_ANALOG (1 << 1)
+#define FLAG_WRITE_INVERT (1 << 2)
 
 #define ERR_MALFORMED_PACKET 0x01
 #define ERR_INVALID_TYPE 0x02
@@ -123,10 +131,16 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
         if (analog)
         {
             value = analogRead(pin);
+
+            // invert value if needed
+            value = (flags & FLAG_READ_INVERT) ? INVERT_ANALOG_READ_VALUE(value) : value;
         }
         else
         {
             value = digitalRead(pin);
+
+            // invert value if needed
+            value = (flags & FLAG_READ_INVERT) ? !value : value;
         }
 
         // send response
@@ -160,10 +174,16 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
         // write pin value
         if (analog)
         {
+            // invert value if needed
+            value = (flags & FLAG_WRITE_INVERT) ? INVERT_ANALOG_WRITE_VALUE(value) : value;
+
             analogWrite(pin, value);
         }
         else
         {
+            // invert value if needed
+            value = (flags & FLAG_WRITE_INVERT) ? !value : value;
+
             digitalWrite(pin, value == 0x0 ? LOW : HIGH);
         }
 

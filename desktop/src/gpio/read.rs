@@ -9,6 +9,7 @@ const TYPE_READ_RESPONSE: u8 = 0x03;
 const FLAG_READ_PULLUP: u8 = 1 << 0;
 const FLAG_READ_PULLDOWN: u8 = 1 << 1;
 const FLAG_READ_ANALOG: u8 = 1 << 2;
+const FLAG_READ_INVERT: u8 = 1 << 3;
 
 //
 // Read Request Implementation
@@ -19,6 +20,7 @@ pub struct ReadRequest {
     pub pullup: bool,
     pub pulldown: bool,
     pub analog: bool,
+    pub invert: bool,
 }
 
 #[derive(Debug)]
@@ -27,12 +29,13 @@ pub struct ReadResponse {
 }
 
 impl ReadRequest {
-    pub fn new(pin: u8, pullup: bool, pulldown: bool, analog: bool) -> ReadRequest {
+    pub fn new(pin: u8, pullup: bool, pulldown: bool, analog: bool, invert: bool) -> ReadRequest {
         ReadRequest {
-            pin: pin,
-            pullup: pullup,
-            pulldown: pulldown,
-            analog: analog,
+            pin,
+            pullup,
+            pulldown,
+            analog,
+            invert,
         }
     }
 }
@@ -49,6 +52,9 @@ impl Request<ReadResponse> for ReadRequest {
         }
         if self.analog {
             flags |= FLAG_READ_ANALOG;
+        }
+        if self.invert {
+            flags |= FLAG_READ_INVERT;
         }
 
         // assemble packet body
