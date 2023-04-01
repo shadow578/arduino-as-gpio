@@ -15,62 +15,69 @@ the first byte of the packet body specifies the type of packet. depending on the
 | Packet Type Byte | Operation      | Direction          |
 | ---------------- | -------------- | ------------------ |
 | `0x01`           | read request   | Desktop -> Arduino |
-| `0x02`           | write request  | Desktop -> Arduino |
 | `0x03`           | read response  | Arduino -> Desktop |
+| `0x02`           | write request  | Desktop -> Arduino |
 | `0x04`           | write response | Arduino -> Desktop |
 | `0x05`           | error response | Arduino -> Desktop |
 
 ### Read Request
 
 the read request packet body consists of a single-byte pin number that specifies the pin to operate on and a single-byte flags field.
+a read request is answered with a read response packet.
 
-> [0x01][pin][flags]
+    [0x01][pin][flags]
+     1b    1b   1b
 
-| Flag Bit # | Description              |
-| ---------- | ------------------------ |
-| 1 (LSB)    | enable pullup resistor   |
-| 2          | enable pulldown resistor |
-| 3          | analog read              |
-| 4          | invert the value         |
-| 5          | reserved                 |
-| 6          | reserved                 |
-| 7          | reserved                 |
-| 8 (MSB)    | reserved                 |
-
-### Write Request
-
-the write request packet body consists of a single-byte pin number that specifies the pin to operate on, a single-byte flags field and a two-byte value field.
-
-> [0x02][pin][value][flags]
-
-| Flag Bit # | Description      |
-| ---------- | ---------------- |
-| 1 (LSB)    | analog write     |
-| 2          | invert the value |
-| 3          | reserved         |
-| 4          | reserved         |
-| 5          | reserved         |
-| 6          | reserved         |
-| 7          | reserved         |
-| 8 (MSB)    | reserved         |
+| Flag Bit # | Name     | Description              |
+| ---------- | -------- | ------------------------ |
+| 1 (LSB)    | PULLUP   | enable pullup resistor   |
+| 2          | PULLDOWN | enable pulldown resistor |
+| 3          | ANALOG   | analog read              |
+| 4          | INVERT   | invert the value         |
+| 5          | -        | reserved                 |
+| 6          | -        | reserved                 |
+| 7          | -        | reserved                 |
+| 8 (MSB)    | -        | reserved                 |
 
 ### Read Response
 
 the read response packet body consists of a two-byte value field that contains the value read from the pin.
 
-> [0x03][value]
+    [0x03][value]
+     1b   2b
+
+### Write Request
+
+the write request packet body consists of a single-byte pin number that specifies the pin to operate on, a single-byte flags field and a two-byte value field.
+a write request is answered with a write response packet.
+
+    [0x02][pin][value][flags]
+     1b    1b   2b    1b
+
+| Flag Bit # | Name   | Description      |
+| ---------- | ------ | ---------------- |
+| 1 (LSB)    | ANALOG | analog write     |
+| 2          | INVERT | invert the value |
+| 3          | -      | reserved         |
+| 4          | -      | reserved         |
+| 5          | -      | reserved         |
+| 6          | -      | reserved         |
+| 7          | -      | reserved         |
+| 8 (MSB)    | -      | reserved         |
 
 ### Write Response
 
 the write response contains no additional data.
 
-> [0x04]
+    [0x04]
+     1b
 
 ### Error Response
 
 the error response packet body consists of a single-byte error code.
 
-> [0x05][error-code]
+    [0x05][error-code]
+     1b    1b
 
 #### Error Codes
 
