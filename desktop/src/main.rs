@@ -2,7 +2,7 @@ pub mod gpio;
 pub mod sdsp;
 
 use clap::{Parser, Subcommand};
-use gpio::{read::ReadRequest, write::WriteRequest, Error, HostController};
+use gpio::{read::ReadRequest, toggle::ToggleRequest, write::WriteRequest, Error, HostController};
 use std::time::Duration;
 
 //
@@ -52,6 +52,12 @@ enum Command {
         /// write a analog value?
         #[arg(short, long)]
         analog: bool,
+    },
+
+    /// toggle a gpio pin
+    Toggle {
+        /// the pin to toggle
+        pin: u8,
     },
 }
 
@@ -140,6 +146,27 @@ fn main() {
             match response {
                 Ok(_) => {
                     println!("{}", value);
+                }
+                Err(error) => {
+                    print_gpio_error_and_exit(error);
+                }
+            }
+        }
+        Command::Toggle { pin } => {
+            // create the request
+            let request = ToggleRequest::new(pin);
+
+            // send the request
+            let response = host.send(&request, target_id);
+            match response {
+                Ok(response) => {
+                    // print the response value
+                    println!("{}", response.new_value);
+
+                    // exit with the correct code
+                    if !args.no_exit_code {
+                        std::process::exit(response.new_value as i32);
+                    }
                 }
                 Err(error) => {
                     print_gpio_error_and_exit(error);

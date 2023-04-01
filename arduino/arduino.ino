@@ -50,6 +50,8 @@ void sdsp_serial_write(uint8_t data)
 #define TYPE_READ_RESPONSE 0x03
 #define TYPE_WRITE_RESPONSE 0x04
 #define TYPE_ERROR_RESPONSE 0x05
+#define TYPE_TOGGLE_REQUEST 0x06
+#define TYPE_TOGGLE_RESPONSE 0x07
 
 #define FLAG_READ_PULLUP (1 << 0)
 #define FLAG_READ_PULLDOWN (1 << 1)
@@ -205,6 +207,38 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
         // send response
         uint8_t response[1] = {TYPE_WRITE_RESPONSE};
         sdsp_write_packet(response, 1, OWN_DEVICE_ID, from);
+        return;
+    }
+    case TYPE_TOGGLE_REQUEST:
+    {
+        // ensure packet length is correct
+        if (pkg_len != 2)
+        {
+            send_error_response(ERR_MALFORMED_PACKET, from);
+            break;
+        }
+        uint8_t pin = pkg_buffer[1];
+
+        // ensure pin is valid
+        if (!IS_VALID_PIN_FOR_DIGITAL_WRITE(pin))
+        {
+            send_error_response(ERR_INVALID_PIN, from);
+            break;
+        }
+
+        // set pin mode
+        pinMode(pin, OUTPUT);
+
+        // read current value DIRECT
+        uint8_t value = digitalRead(pin);
+
+        // update and write value
+        value = value == 0x0 ? HIGH : LOW;
+        digitalWrite(pin, value);
+
+        // send response
+        uint8_t response[2] = {TYPE_TOGGLE_RESPONSE, value};
+        sdsp_write_packet(response, 2, OWN_DEVICE_ID, from);
         return;
     }
     default:

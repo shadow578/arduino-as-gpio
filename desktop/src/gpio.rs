@@ -1,6 +1,7 @@
 pub mod error;
 pub mod read;
 pub mod write;
+pub mod toggle;
 
 use crate::sdsp;
 use serialport::SerialPort;

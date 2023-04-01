@@ -12,13 +12,15 @@ the command data is contained in the packet body of the carrier protocol.
 
 the first byte of the packet body specifies the type of packet. depending on the type of packet, the packet body contains different data.
 
-| Packet Type Byte | Operation      | Direction          |
-| ---------------- | -------------- | ------------------ |
-| `0x01`           | read request   | Desktop -> Arduino |
-| `0x03`           | read response  | Arduino -> Desktop |
-| `0x02`           | write request  | Desktop -> Arduino |
-| `0x04`           | write response | Arduino -> Desktop |
-| `0x05`           | error response | Arduino -> Desktop |
+| Packet Type Byte | Operation       | Direction          |
+| ---------------- | --------------- | ------------------ |
+| `0x01`           | read request    | Desktop -> Arduino |
+| `0x03`           | read response   | Arduino -> Desktop |
+| `0x02`           | write request   | Desktop -> Arduino |
+| `0x04`           | write response  | Arduino -> Desktop |
+| `0x05`           | error response  | Arduino -> Desktop |
+| `0x06`           | toggle request  | Desktop -> Arduino |
+| `0x07`           | toggle response | Arduino -> Desktop |
 
 ### Read Request
 
@@ -71,6 +73,21 @@ the write response contains no additional data.
 
     [0x04]
      1b
+
+### Toggle Request
+
+the toggle request packet body only consists of a single-byte pin number that specifies the pin to operate on.
+the toggle request only works on digital pins and toggles the pin between HIGH and LOW.
+
+    [0x06][pin]
+     1b    1b
+
+### Toggle Response
+
+the toggle response contains a single-byte value field that contains the value of the pin after the toggle operation.
+
+    [0x07][value]
+     1b    1b
 
 ### Error Response
 
