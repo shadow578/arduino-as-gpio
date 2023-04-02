@@ -18,6 +18,7 @@ the most significant bit of the packet type signifies if the packet is a request
 | `0x01`          | `0x81`           | read                  |
 | `0x02`          | `0x82`           | write                 |
 | `0x03`          | `0x83`           | toggle                |
+| `0x04`          | `0x84`           | i2c write data        |
 | `0x7f`          | `0xff`           | error (response only) |
 
 ### Read Request
@@ -111,6 +112,54 @@ the toggle response contains a single-byte value field that contains the value o
 
     [0x83][value]
      1b    1b
+
+### I2C Write Data Request
+
+the i2c write data request packet body consists of a single-byte address field that specifies the address of the i2c device to write to and a single-byte flags field, followed by a variable number of bytes that contain the data to write to the i2c device.
+the data may be empty.
+
+a i2c write data request roughly corrosponds to the following arduino code:
+
+```cpp
+Wire.beginTransmission(address);
+for (int i = 0; i < data.length; i++) {
+    Wire.write(data[i]);
+}
+Wire.endTransmission(STOP FLAG);
+```
+
+    [0x04][address][flags][data...]
+     1b    1b       1b     n bytes
+
+| Flag Bit # | Name | Description                                                                                                                                                                      |
+| ---------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 (LSB)    | STOP | send a stop message and release the bus after transmission. see [Wire documentation](https://www.arduino.cc/reference/en/language/functions/communication/wire/endtransmission/) |
+| 2          | -    | reserved                                                                                                                                                                         |
+| 3          | -    | reserved                                                                                                                                                                         |
+| 4          | -    | reserved                                                                                                                                                                         |
+| 5          | -    | reserved                                                                                                                                                                         |
+| 6          | -    | reserved                                                                                                                                                                         |
+| 7          | -    | reserved                                                                                                                                                                         |
+| 8 (MSB)    | -    | reserved                                                                                                                                                                         |
+
+#### I2C Write Data Response
+
+the i2c write data response contains a single-byte result field that contains the result or error code of the i2c write operation.
+
+    [0x84][result]
+     1b    1b
+
+the result code contains the return value of the `Wire.endTransmission()` function.
+the following table lists the possible result codes according to the [Wire documentation](https://www.arduino.cc/reference/en/language/functions/communication/wire/endtransmission/).
+
+| Result Code | Description                                    |
+| ----------- | ---------------------------------------------- |
+| `0x00`      | success                                        |
+| `0x01`      | error: data too long to fit in transmit buffer |
+| `0x02`      | error: received NACK on transmit of address    |
+| `0x03`      | error: received NACK on transmit of data       |
+| `0x04`      | error: other error                             |
+| `0x05`      | error: timeout                                 |
 
 ### Error Response
 
