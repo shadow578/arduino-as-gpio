@@ -1,60 +1,128 @@
 # Arduino-as-GPIO Protocol Specification
 
-the Arduino-as-GPIO protocol is a simple protocol that allows you to use your Arduino as GPIO for any Computer. The Protocol is a simple binary protocol that is designed to be simple and fast.
+the Arduino-as-GPIO protocol is a simple protocol that allows you to use your Arduino as GPIO for any Computer. The Protocol is a simple binary protocol that is designed to be flexible and fast.
+The Protocol is made up of two distinctive layers, one which handles seperation of packets ( [SDSP](/docs/SDSP.md)) and one which handles the actual commands (described in this document).
 
-## Packet Structure
+## Command Protocol
 
-the protocol consists of tree main sections: a packet prologue, a packet body and a packet epilogue. The packet prologue and epilogue are used to identify the start and end of a packet. The packet body contains the actual data of the packet.
+the command protocol is responsible for handling the actual commands.
+the command data is contained in the packet body of the carrier protocol.
 
-### Packet Prologue
+### Packet Types
 
-the packet prologue is a single byte that is used to identify the start of a packet. The packet prologue is always `0x7B` (`'{'`).
+the first byte of the packet body specifies the type of packet. depending on the type of packet, the packet body contains different data.
+the most significant bit of the packet type signifies if the packet is a request or a response, and is set to 0 for requests and 1 for responses.
 
-### Packet Body
+| Request Type ID | Response Type ID | Operation             |
+| --------------- | ---------------- | --------------------- |
+| `0x01`          | `0x81`           | read                  |
+| `0x02`          | `0x82`           | write                 |
+| `0x03`          | `0x83`           | toggle                |
+| `0x7f`          | `0xff`           | error (response only) |
 
-the packet body contains the actual data of the packet.
-the packet body differs between command and response packets. See the [packet types](#packet-types) section for more information.
+### Read Request
 
-### Packet Epilogue
+the read request packet body consists of a single-byte pin number that specifies the pin to operate on and a single-byte flags field.
+a read request is answered with a read response packet.
 
-the packet epilogue consists of two bytes. The first byte is a checksum of the entire packet. The second byte is always `0x7D` (`'}'`).
+a read request roughly corrosponds to the following arduino code:
 
-The checksum is calculated by adding all bytes of the packet together and truncating the result to a single byte. The checksum is calculated including the packet prologue and epilogue.
-Since the checksum contains the checksum field itself, the checksum field is set to `0x00` when calculating the checksum.
+```cpp
+pinMode(pin, INPUT); // or INPUT_PULLUP or INPUT_PULLDOWN depending on the flags
+digitalRead(pin);
+// ... or ...
+analogRead(pin)
+```
 
-## Packet Types
+    [0x01][pin][flags]
+     1b    1b   1b
 
-the protocol consists of two packet types: command packets and response packets. Command packets are sent from the desktop app to the arduino. Response packets are sent from the arduino to the desktop app in response to a command packet.
+| Flag Bit # | Name     | Description                                   |
+| ---------- | -------- | --------------------------------------------- |
+| 1 (LSB)    | PULLUP   | enable pullup resistor                        |
+| 2          | PULLDOWN | enable pulldown resistor                      |
+| 3          | ANALOG   | analog read                                   |
+| 4          | INVERT   | invert the value                              |
+| 5          | DIRECT   | call digitalRead without setting the pin mode |
+| 6          | -        | reserved                                      |
+| 7          | -        | reserved                                      |
+| 8 (MSB)    | -        | reserved                                      |
 
-### Command Packet
+#### Read Response
 
-the command packet's body consists of a single command byte, a single-byte pin number that specifies the pin to operate on and a single-byte value that specifies the value to set the pin to. The command byte specifies the type of operation to perform on the pin. The pin number specifies the pin to operate on. The value specifies the value to set the pin to.
-on read operations, the value is ignored.
+the read response packet body consists of a two-byte value field that contains the value read from the pin.
 
-| Command Byte | Operation                 |
-| ------------ | ------------------------- |
-| `0x01`       | digital read              |
-| `0x02`       | digital read, with pullup |
-| `0x03`       | digital write             |
-| `0x04`       | analog read               |
-| `0x05`       | analog write              |
+    [0x81][value]
+     1b   2b
 
-### Response Packet
+### Write Request
 
-the response packet's body consists of a single command byte, and a single-byte result value.
-the command byte specifies the type of operation that was performed on the pin. The result value specifies the result of the operation.
-on write operations, the result value is set to the value that was written to the pin.
-on read operations, the result value is set to the value that was read from the pin.
+the write request packet body consists of a single-byte pin number that specifies the pin to operate on, a single-byte flags field and a two-byte value field.
+a write request is answered with a write response packet.
 
-the command byte uses the same values as the command byte in the command packet.
+a write request roughly corrosponds to the following arduino code:
 
-#### Error
+```cpp
+pinMode(pin, OUTPUT);
+digitalWrite(pin, value == 0 ? LOW : HIGH);
+// ... or ...
+analogWrite(pin, value)
+```
 
-if an error occurs, the most significant bit of the command byte is set to `1`. The result value is set to a error code.
+    [0x02][pin][value][flags]
+     1b    1b   2b    1b
 
-| Error Code | Description                      |
-| ---------- | -------------------------------- |
-| `0x01`     | malformed packet received        |
-| `0x02`     | invalid packet checksum receivec |
-| `0x03`     | invalid pin value                |
-| `0x04`     | invalid command byte             |
+| Flag Bit # | Name   | Description      |
+| ---------- | ------ | ---------------- |
+| 1 (LSB)    | ANALOG | analog write     |
+| 2          | INVERT | invert the value |
+| 3          | -      | reserved         |
+| 4          | -      | reserved         |
+| 5          | -      | reserved         |
+| 6          | -      | reserved         |
+| 7          | -      | reserved         |
+| 8 (MSB)    | -      | reserved         |
+
+#### Write Response
+
+the write response contains no additional data.
+
+    [0x82]
+     1b
+
+### Toggle Request
+
+the toggle request packet body only consists of a single-byte pin number that specifies the pin to operate on.
+the toggle request only works on digital pins and toggles the pin between HIGH and LOW.
+
+a toggle request roughly corrosponds to the following arduino code:
+
+```cpp
+pinMode(pin, OUTPUT);
+digitalWrite(pin, !digitalRead(pin));
+```
+
+    [0x03][pin]
+     1b    1b
+
+#### Toggle Response
+
+the toggle response contains a single-byte value field that contains the value of the pin after the toggle operation.
+
+    [0x83][value]
+     1b    1b
+
+### Error Response
+
+the error response packet body consists of a single-byte error code.
+
+    [0xff][error-code]
+     1b    1b
+
+#### Error Codes
+
+| Error Code | Description               |
+| ---------- | ------------------------- |
+| `0x01`     | malformed packet received |
+| `0x02`     | invalid packet type       |
+| `0x03`     | invalid pin value         |
