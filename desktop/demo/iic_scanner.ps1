@@ -4,7 +4,7 @@ param (
 )
 
 function Test-DeviceAddress([int] $Address) {
-    & $Binary $Port i2c write $Address --stop 2>&1 | Out-Null
+    & $Binary $Port i2c $Address write --stop 2>&1 | Out-Null
     return $LASTEXITCODE -eq 0
 }
 
