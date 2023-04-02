@@ -1,6 +1,6 @@
 param (
     [string] $Port = "COM3",
-    [string] $Binary = ".\target\release\agpio.exe",
+    [string] $Binary = "..\target\release\agpio.exe",
     [int] $Iterations = 100,
     [int] $Pin = 13
 )
