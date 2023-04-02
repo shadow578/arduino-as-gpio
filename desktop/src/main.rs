@@ -2,13 +2,19 @@ pub mod gpio;
 pub mod sdsp;
 
 use clap::{Parser, Subcommand};
-use gpio::{read::ReadRequest, toggle::ToggleRequest, write::WriteRequest, Error, HostController};
+use gpio::{
+    iic::write::{IICResultCode, IICWriteRequest},
+    read::ReadRequest,
+    toggle::ToggleRequest,
+    write::WriteRequest,
+    Error, HostController,
+};
 use std::time::Duration;
 
 //
 // Clap argument structures
 //
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 enum Command {
     /// read from a gpio pin
     Read {
@@ -59,9 +65,32 @@ enum Command {
         /// the pin to toggle
         pin: u8,
     },
+
+    /// interact with I2C devices
+    I2C {
+        // the operation to perform
+        #[command(subcommand)]
+        command: I2CCommand,
+    },
 }
 
-#[derive(Parser, Debug)]
+#[derive(Subcommand, Debug, Clone)]
+enum I2CCommand {
+    /// write data to an I2C device
+    Write {
+        /// the address of the device to write to
+        address: u8,
+
+        /// the data to write
+        data: Option<Vec<u8>>,
+
+        /// send a stop condition after writing?
+        #[arg(short, long)]
+        stop: bool,
+    },
+}
+
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 struct Args {
@@ -94,16 +123,42 @@ struct Args {
 
 fn main() {
     // parse command line args
-    let args = Args::parse();
+    let mut args = Args::parse();
 
     // create the host controller instance
     let mut host = create_host_controller(&args);
 
     // resolve target id, default to boardcast (only a valid strategy for single device networks)
-    let target_id = args.target_id.unwrap_or(0xFF);
+    args.target_id = Some(args.target_id.unwrap_or(0xFF));
 
-    // match the subcommand
-    match args.command {
+    // execute the command
+    execute_command(&mut host, args.command.clone(), &args);
+
+    // exit with success code
+    std::process::exit(0);
+}
+
+fn create_host_controller(args: &Args) -> HostController {
+    // create the serial port
+    let port = serialport::new(args.port.clone(), args.baud.unwrap_or(115200))
+        .timeout(Duration::from_millis(100))
+        .open()
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to open serial port: {}", e);
+            std::process::exit(128);
+        });
+
+    // create the host controller instance
+    HostController::new(
+        port,
+        args.own_id.unwrap_or(0xAA),
+        Some(Duration::from_millis(100)),
+        args.retries,
+    )
+}
+
+fn execute_command(host: &mut HostController, command: Command, args: &Args) {
+    match command {
         Command::Read {
             pin,
             analog,
@@ -116,7 +171,7 @@ fn main() {
             let request = ReadRequest::new(pin, pullup, pulldown, analog, inverted, direct);
 
             // send the request and handle the response
-            let response = host.send(&request, target_id);
+            let response = host.send(&request, args.target_id.unwrap());
             match response {
                 Ok(response) => {
                     // print the response value
@@ -142,7 +197,7 @@ fn main() {
             let request = WriteRequest::new(pin, value, analog, inverted);
 
             // send the request
-            let response = host.send(&request, target_id);
+            let response = host.send(&request, args.target_id.unwrap());
             match response {
                 Ok(_) => {
                     println!("{}", value);
@@ -157,7 +212,7 @@ fn main() {
             let request = ToggleRequest::new(pin);
 
             // send the request
-            let response = host.send(&request, target_id);
+            let response = host.send(&request, args.target_id.unwrap());
             match response {
                 Ok(response) => {
                     // print the response value
@@ -173,29 +228,63 @@ fn main() {
                 }
             }
         }
+        Command::I2C { command } => {
+            execute_i2c_command(host, command, &args);
+        }
     }
-
-    // exit with success code
-    std::process::exit(0);
 }
 
-fn create_host_controller(args: &Args) -> HostController {
-    // create the serial port
-    let port = serialport::new(args.port.clone(), args.baud.unwrap_or(115200))
-        .timeout(Duration::from_millis(100))
-        .open()
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to open serial port: {}", e);
-            std::process::exit(128);
-        });
+fn execute_i2c_command(host: &mut HostController, command: I2CCommand, args: &Args) {
+    match command {
+        I2CCommand::Write {
+            address,
+            data,
+            stop,
+        } => {
+            // create the request
+            let request = IICWriteRequest::new(address, data.unwrap_or(vec![]), stop);
 
-    // create the host controller instance
-    HostController::new(
-        port,
-        args.own_id.unwrap_or(0xAA),
-        Some(Duration::from_millis(100)),
-        args.retries,
-    )
+            // send the request
+            let response = host.send(&request, args.target_id.unwrap());
+            match response {
+                Ok(response) => match response.result_code {
+                    IICResultCode::Success => {
+                        println!("Success");
+                    }
+                    IICResultCode::DataTooLong => {
+                        eprintln!("i2c write failed: data too long reported by Wire");
+                        std::process::exit(128);
+                    }
+                    IICResultCode::NACKOnAddress => {
+                        eprintln!("i2c write failed: NACK on address reported by Wire");
+                        std::process::exit(128);
+                    }
+                    IICResultCode::NACKOnData => {
+                        eprintln!("i2c write failed: NACK on data reported by Wire");
+                        std::process::exit(128);
+                    }
+                    IICResultCode::Other => {
+                        eprintln!("i2c write failed: other error reported by Wire");
+                        std::process::exit(128);
+                    }
+                    IICResultCode::Timeout => {
+                        eprintln!("i2c write failed: timeout reported by Wire");
+                        std::process::exit(128);
+                    }
+                    IICResultCode::Unknown { result_code } => {
+                        eprintln!(
+                            "i2c write failed: unknown error {:#04x} reported by Wire",
+                            result_code
+                        );
+                        std::process::exit(128);
+                    }
+                },
+                Err(error) => {
+                    print_gpio_error_and_exit(error);
+                }
+            }
+        }
+    }
 }
 
 fn print_gpio_error_and_exit(error: Error) -> ! {
