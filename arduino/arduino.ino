@@ -45,13 +45,13 @@ void sdsp_serial_write(uint8_t data)
 //
 // Command protocol constants
 //
-#define TYPE_READ_REQUEST 0x01
-#define TYPE_WRITE_REQUEST 0x02
-#define TYPE_READ_RESPONSE 0x03
-#define TYPE_WRITE_RESPONSE 0x04
-#define TYPE_ERROR_RESPONSE 0x05
-#define TYPE_TOGGLE_REQUEST 0x06
-#define TYPE_TOGGLE_RESPONSE 0x07
+#define TYPE_READ 0x01
+#define TYPE_WRITE 0x02
+#define TYPE_TOGGLE 0x03
+#define TYPE_ERROR 0x7f
+
+#define MAKE_REQUEST_TYPE(x) (x & ~(0 << 7))
+#define MAKE_RESPONSE_TYPE(x) (x | (1 << 7))
 
 #define FLAG_READ_PULLUP (1 << 0)
 #define FLAG_READ_PULLDOWN (1 << 1)
@@ -59,8 +59,8 @@ void sdsp_serial_write(uint8_t data)
 #define FLAG_READ_INVERT (1 << 3)
 #define FLAG_READ_DIRECT (1 << 4)
 
-#define FLAG_WRITE_ANALOG (1 << 1)
-#define FLAG_WRITE_INVERT (1 << 2)
+#define FLAG_WRITE_ANALOG (1 << 0)
+#define FLAG_WRITE_INVERT (1 << 1)
 
 #define ERR_MALFORMED_PACKET 0x01
 #define ERR_INVALID_TYPE 0x02
@@ -74,7 +74,7 @@ uint8_t pkg_buffer[PKG_BUFFER_LEN];
 
 void send_error_response(uint8_t error_code, uint8_t to)
 {
-    uint8_t pkg[2] = {TYPE_ERROR_RESPONSE, error_code};
+    uint8_t pkg[2] = {MAKE_RESPONSE_TYPE(TYPE_ERROR), error_code};
     sdsp_write_packet(pkg, 2, OWN_DEVICE_ID, to);
 }
 
@@ -92,7 +92,7 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
     // handle packet types
     switch (type)
     {
-    case TYPE_READ_REQUEST:
+    case MAKE_REQUEST_TYPE(TYPE_READ):
     {
         // ensure packet length is correct
         if (pkg_len != 3)
@@ -161,11 +161,11 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
         }
 
         // send response
-        uint8_t response[3] = {TYPE_READ_RESPONSE, (uint8_t)(value >> 8), (uint8_t)value};
+        uint8_t response[3] = {MAKE_RESPONSE_TYPE(TYPE_READ), (uint8_t)(value >> 8), (uint8_t)value};
         sdsp_write_packet(response, 3, OWN_DEVICE_ID, from);
         return;
     }
-    case TYPE_WRITE_REQUEST:
+    case MAKE_REQUEST_TYPE(TYPE_WRITE):
     {
         // ensure packet length is correct
         if (pkg_len != 5)
@@ -205,11 +205,11 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
         }
 
         // send response
-        uint8_t response[1] = {TYPE_WRITE_RESPONSE};
+        uint8_t response[1] = {MAKE_RESPONSE_TYPE(TYPE_WRITE)};
         sdsp_write_packet(response, 1, OWN_DEVICE_ID, from);
         return;
     }
-    case TYPE_TOGGLE_REQUEST:
+    case MAKE_REQUEST_TYPE(TYPE_TOGGLE):
     {
         // ensure packet length is correct
         if (pkg_len != 2)
@@ -237,7 +237,7 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
         digitalWrite(pin, value);
 
         // send response
-        uint8_t response[2] = {TYPE_TOGGLE_RESPONSE, value};
+        uint8_t response[2] = {MAKE_RESPONSE_TYPE(TYPE_TOGGLE), value};
         sdsp_write_packet(response, 2, OWN_DEVICE_ID, from);
         return;
     }

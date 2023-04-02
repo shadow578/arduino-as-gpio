@@ -1,10 +1,9 @@
-use super::{Error, Request};
+use super::{as_request_type, as_response_type, Error, Request};
 
 //
 // Toggle Request Constants
 //
-const TYPE_TOGGLE_REQUEST: u8 = 0x06;
-const TYPE_TOGGLE_RESPONSE: u8 = 0x07;
+const TYPE_TOGGLE: u8 = 0x03;
 
 //
 // Toggle Request Implementation
@@ -29,8 +28,8 @@ impl Request<ToggleResponse> for ToggleRequest {
     fn get_packet_body(&self) -> Vec<u8> {
         // assemble packet body
         return vec![
-            TYPE_TOGGLE_REQUEST, // TYPE
-            self.pin,            // PIN
+            as_request_type!(TYPE_TOGGLE), // TYPE
+            self.pin,                      // PIN
         ];
     }
 
@@ -41,7 +40,7 @@ impl Request<ToggleResponse> for ToggleRequest {
         }
 
         // ensure type is correct
-        if packet_body[0] != TYPE_TOGGLE_RESPONSE {
+        if packet_body[0] != as_response_type!(TYPE_TOGGLE) {
             return Err(Error::ResponseMismatch);
         }
 

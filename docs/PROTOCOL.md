@@ -11,16 +11,14 @@ the command data is contained in the packet body of the carrier protocol.
 ### Packet Types
 
 the first byte of the packet body specifies the type of packet. depending on the type of packet, the packet body contains different data.
+the most significant bit of the packet type signifies if the packet is a request or a response, and is set to 0 for requests and 1 for responses.
 
-| Packet Type Byte | Operation       | Direction          |
-| ---------------- | --------------- | ------------------ |
-| `0x01`           | read request    | Desktop -> Arduino |
-| `0x03`           | read response   | Arduino -> Desktop |
-| `0x02`           | write request   | Desktop -> Arduino |
-| `0x04`           | write response  | Arduino -> Desktop |
-| `0x05`           | error response  | Arduino -> Desktop |
-| `0x06`           | toggle request  | Desktop -> Arduino |
-| `0x07`           | toggle response | Arduino -> Desktop |
+| Request Type ID | Response Type ID | Operation             |
+| --------------- | ---------------- | --------------------- |
+| `0x01`          | `0x81`           | read                  |
+| `0x02`          | `0x82`           | write                 |
+| `0x03`          | `0x83`           | toggle                |
+| `0x7f`          | `0xff`           | error (response only) |
 
 ### Read Request
 
@@ -50,11 +48,11 @@ analogRead(pin)
 | 7          | -        | reserved                                      |
 | 8 (MSB)    | -        | reserved                                      |
 
-### Read Response
+#### Read Response
 
 the read response packet body consists of a two-byte value field that contains the value read from the pin.
 
-    [0x03][value]
+    [0x81][value]
      1b   2b
 
 ### Write Request
@@ -85,11 +83,11 @@ analogWrite(pin, value)
 | 7          | -      | reserved         |
 | 8 (MSB)    | -      | reserved         |
 
-### Write Response
+#### Write Response
 
 the write response contains no additional data.
 
-    [0x04]
+    [0x82]
      1b
 
 ### Toggle Request
@@ -104,21 +102,21 @@ pinMode(pin, OUTPUT);
 digitalWrite(pin, !digitalRead(pin));
 ```
 
-    [0x06][pin]
+    [0x03][pin]
      1b    1b
 
-### Toggle Response
+#### Toggle Response
 
 the toggle response contains a single-byte value field that contains the value of the pin after the toggle operation.
 
-    [0x07][value]
+    [0x83][value]
      1b    1b
 
 ### Error Response
 
 the error response packet body consists of a single-byte error code.
 
-    [0x05][error-code]
+    [0xff][error-code]
      1b    1b
 
 #### Error Codes

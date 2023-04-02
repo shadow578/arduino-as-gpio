@@ -1,9 +1,9 @@
-use super::{Error, Request};
+use super::{as_response_type, Error, Request};
 
 //
 // Error Response Constants
 //
-const TYPE_ERROR_RESPONSE: u8 = 0x05;
+const TYPE_ERROR: u8 = 0x7f;
 
 //const ERR_MALFORMED_PACKET: u8 = 0x01;
 //const ERR_INVALID_TYPE: u8 = 0x02;
@@ -32,7 +32,7 @@ impl Request<Error> for ErrorRequest {
         }
 
         // ensure type is error response
-        if packet_body[0] != TYPE_ERROR_RESPONSE {
+        if packet_body[0] != as_response_type!(TYPE_ERROR) {
             return Err(Error::ResponseMismatch);
         }
 

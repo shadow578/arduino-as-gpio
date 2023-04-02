@@ -45,6 +45,19 @@ pub trait Request<ResponseType>: std::fmt::Debug {
     fn parse_response(&self, packet_body: &Vec<u8>) -> Result<ResponseType, Error>;
 }
 
+macro_rules! as_request_type {
+    ($x: expr) => {
+        $x & !(0 << 7)
+    };
+}
+macro_rules! as_response_type {
+    ($x: expr) => {
+        $x | (1 << 7)
+    };
+}
+pub(crate) use as_request_type;
+pub(crate) use as_response_type;
+
 /// GPIO host controller implementation
 pub struct HostController {
     port: Box<dyn SerialPort>,

@@ -1,10 +1,9 @@
-use super::{Error, Request};
+use super::{as_request_type, as_response_type, Error, Request};
 
 //
 // Read Request Constants
 //
-const TYPE_READ_REQUEST: u8 = 0x01;
-const TYPE_READ_RESPONSE: u8 = 0x03;
+const TYPE_READ: u8 = 0x01;
 
 const FLAG_READ_PULLUP: u8 = 1 << 0;
 const FLAG_READ_PULLDOWN: u8 = 1 << 1;
@@ -72,9 +71,9 @@ impl Request<ReadResponse> for ReadRequest {
 
         // assemble packet body
         return vec![
-            TYPE_READ_REQUEST, //TYPE
-            self.pin,          // PIN
-            flags,             // FLAGS
+            as_request_type!(TYPE_READ), //TYPE
+            self.pin,                    // PIN
+            flags,                       // FLAGS
         ];
     }
 
@@ -85,7 +84,7 @@ impl Request<ReadResponse> for ReadRequest {
         }
 
         // ensure type is read response
-        if packet_body[0] != TYPE_READ_RESPONSE {
+        if packet_body[0] != as_response_type!(TYPE_READ) {
             return Err(Error::ResponseMismatch);
         }
 

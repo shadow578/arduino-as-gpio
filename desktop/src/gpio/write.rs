@@ -1,13 +1,12 @@
-use super::{Error, Request};
+use super::{as_request_type, as_response_type, Error, Request};
 
 //
 // Write Request Constants
 //
-const TYPE_WRITE_REQUEST: u8 = 0x02;
-const TYPE_WRITE_RESPONSE: u8 = 0x04;
+const TYPE_WRITE: u8 = 0x02;
 
-const FLAG_WRITE_ANALOG: u8 = 1 << 1;
-const FLAG_WRITE_INVERT: u8 = 1 << 2;
+const FLAG_WRITE_ANALOG: u8 = 1 << 0;
+const FLAG_WRITE_INVERT: u8 = 1 << 1;
 
 //
 // Write Request Implementation
@@ -47,11 +46,11 @@ impl Request<WriteResponse> for WriteRequest {
 
         // assemble packet body
         return vec![
-            TYPE_WRITE_REQUEST,        // TYPE
-            self.pin,                  // PIN
-            (self.value << 8) as u8,   // VALUE (MSB)
-            (self.value & 0xFF) as u8, // VALUE (LSB)
-            flags,                     // FLAGS
+            as_request_type!(TYPE_WRITE), // TYPE
+            self.pin,                     // PIN
+            (self.value << 8) as u8,      // VALUE (MSB)
+            (self.value & 0xFF) as u8,    // VALUE (LSB)
+            flags,                        // FLAGS
         ];
     }
 
@@ -62,7 +61,7 @@ impl Request<WriteResponse> for WriteRequest {
         }
 
         // ensure type is write response
-        return if packet_body[0] == TYPE_WRITE_RESPONSE {
+        return if packet_body[0] == as_response_type!(TYPE_WRITE) {
             Ok(WriteResponse {})
         } else {
             Err(Error::ResponseMismatch)
