@@ -68,6 +68,9 @@ enum Command {
 
     /// interact with I2C devices
     I2C {
+        /// the address of the device to write to
+        address: u8,
+
         // the operation to perform
         #[command(subcommand)]
         command: I2CCommand,
@@ -78,9 +81,6 @@ enum Command {
 enum I2CCommand {
     /// write data to an I2C device
     Write {
-        /// the address of the device to write to
-        address: u8,
-
         /// the data to write
         data: Option<Vec<u8>>,
 
@@ -228,19 +228,15 @@ fn execute_command(host: &mut HostController, command: Command, args: &Args) {
                 }
             }
         }
-        Command::I2C { command } => {
-            execute_i2c_command(host, command, &args);
+        Command::I2C { address, command } => {
+            execute_i2c_command(host, command, address, &args);
         }
     }
 }
 
-fn execute_i2c_command(host: &mut HostController, command: I2CCommand, args: &Args) {
+fn execute_i2c_command(host: &mut HostController, command: I2CCommand, address: u8, args: &Args) {
     match command {
-        I2CCommand::Write {
-            address,
-            data,
-            stop,
-        } => {
+        I2CCommand::Write { data, stop } => {
             // create the request
             let request = IICWriteRequest::new(address, data.unwrap_or(vec![]), stop);
 
