@@ -262,10 +262,8 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
         Wire.beginTransmission(address);
 
         // write i2c data
-        pinMode(13, OUTPUT);
         for (int i = 3; i < pkg_len; i++)
         {
-            digitalWrite(13, i%2 == 1);
             Wire.write(pkg_buffer[i]);
         }
 
