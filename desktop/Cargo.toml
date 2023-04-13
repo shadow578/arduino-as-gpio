@@ -1,6 +1,6 @@
 [package]
 name = "agpio"
-version = "0.1.1"
+version = "0.1.2"
 author = ["shadow578"]
 edition = "2021"
 
