@@ -48,6 +48,7 @@ void sdsp_serial_write(uint8_t data)
 #define TYPE_READ 0x01
 #define TYPE_WRITE 0x02
 #define TYPE_TOGGLE 0x03
+#define TYPE_IIC_WRITE 0x04
 #define TYPE_ERROR 0x7f
 
 #define MAKE_REQUEST_TYPE(x) (x & ~(0 << 7))
@@ -62,6 +63,8 @@ void sdsp_serial_write(uint8_t data)
 #define FLAG_WRITE_ANALOG (1 << 0)
 #define FLAG_WRITE_INVERT (1 << 1)
 
+#define FLAG_IIC_WRITE_STOP (1 << 0)
+
 #define ERR_MALFORMED_PACKET 0x01
 #define ERR_INVALID_TYPE 0x02
 #define ERR_INVALID_PIN 0x03
@@ -69,6 +72,8 @@ void sdsp_serial_write(uint8_t data)
 //
 // Implementation
 //
+#include <Wire.h>
+
 #define PKG_BUFFER_LEN 32
 uint8_t pkg_buffer[PKG_BUFFER_LEN];
 
@@ -241,6 +246,35 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
         sdsp_write_packet(response, 2, OWN_DEVICE_ID, from);
         return;
     }
+    case MAKE_REQUEST_TYPE(TYPE_IIC_WRITE):
+    {
+        // ensure packet lenght looks valid
+        // (needed: TYPE, address, flags)
+        if (pkg_len < 3)
+        {
+            send_error_response(ERR_MALFORMED_PACKET, from);
+            break;
+        }
+        uint8_t address = pkg_buffer[1];
+        uint8_t flags = pkg_buffer[2];
+
+        // begin the transmission
+        Wire.beginTransmission(address);
+
+        // write i2c data
+        for (int i = 3; i < pkg_len; i++)
+        {
+            Wire.write(pkg_buffer[i]);
+        }
+
+        // end the transmission
+        uint8_t result = Wire.endTransmission(flags & FLAG_IIC_WRITE_STOP);
+
+        // send response
+        uint8_t response[2] = {MAKE_RESPONSE_TYPE(TYPE_IIC_WRITE), result};
+        sdsp_write_packet(response, 2, OWN_DEVICE_ID, from);
+        return;
+    }
     default:
         send_error_response(ERR_INVALID_TYPE, from);
         return;
@@ -253,6 +287,7 @@ void handle_packet(uint8_t pkg_buffer[], uint16_t pkg_len, uint8_t from)
 void setup()
 {
     Serial.begin(COMM_BAUD_RATE);
+    Wire.begin();
 }
 
 void loop()
